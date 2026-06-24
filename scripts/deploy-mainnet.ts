@@ -27,6 +27,20 @@ async function main() {
   console.log("Deployer:", deployer.address);
   console.log("Network: MAINNET — using REAL token addresses\n");
 
+  // ── Gas check ──
+  const feeData = await ethers.provider.getFeeData();
+  const gasPrice = feeData.gasPrice || 0n;
+  const gasGwei = Number(ethers.formatUnits(gasPrice, "gwei"));
+  const estTotalGas = 7_100_000n; // ~7.1M gas for all deploys + wiring
+  const estCost = Number(ethers.formatEther(gasPrice * estTotalGas));
+  console.log(`⚡ Gas: ${gasGwei.toFixed(2)} gwei | Est. deploy cost: ~${estCost.toFixed(4)} ETH`);
+  if (gasGwei > 30) {
+    console.log("⚠️  Gas is HIGH — consider waiting for lower gas (weekend UTC morning)");
+  } else if (gasGwei < 5) {
+    console.log("🟢 Gas is LOW — ideal time to deploy!");
+  }
+  console.log("");
+
   // ── Real token addresses (from env) ──
   const treasuryEOA = process.env.TREASURY_EOA;
   const treasuryVault = process.env.TREASURY_VAULT_ADDRESS || treasuryEOA;
