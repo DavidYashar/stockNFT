@@ -28,6 +28,7 @@ export function getWallet(): ethers.Wallet {
 }
 
 export function getGoogleStockNFT(): ethers.Contract {
+  if (!config.contracts.googleStockNFT) throw new Error("GOOGLE_STOCK_NFT address not configured");
   return new ethers.Contract(config.contracts.googleStockNFT, GOOGLE_STOCK_NFT_ABI, getProvider());
 }
 

@@ -8,7 +8,7 @@
 
 import { ethers } from "ethers";
 import { config } from "../config";
-import { getGoogleStockNFT, getProviderOnly, getWallet } from "../contracts";
+import { getProviderOnly, getWallet } from "../contracts";
 import { resolve } from "path";
 import sharp from "sharp";
 
@@ -244,9 +244,14 @@ async function handleTransfer(from: string, to: string, tokenId: bigint) {
 
 async function pollEvents() {
   const provider = getProviderOnly();
-  const nft = getGoogleStockNFT();
+  const nftAddr = config.contracts.googleStockNFT;
+  if (!nftAddr) return;
 
   try {
+    const nft = new ethers.Contract(nftAddr, [
+      "event NFTMinted(uint256 indexed tokenId, address indexed owner, uint256 ethAmount, uint256 googlPrice)",
+      "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
+    ], provider);
     const currentBlock = await provider.getBlockNumber();
     // First run: look back far enough to catch recent mints (5000 blocks ≈ 16h on mainnet)
     if (lastCheckedBlock === 0) lastCheckedBlock = currentBlock - 5000;
@@ -278,6 +283,12 @@ async function pollEvents() {
 
 async function start() {
   console.log("IRYS Metadata Service — polling every 30s, storing metadata on-chain");
+
+  // Skip if contracts haven't been deployed yet
+  if (!config.contracts.googleStockNFT) {
+    console.log("  ⏸️  IRYS service paused — GOOGLE_STOCK_NFT address not configured");
+    return;
+  }
   
   // One-time catchup: generate metadata for any token that lacks it
   await catchupMissingMetadata();
