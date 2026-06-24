@@ -35,7 +35,6 @@ function getBlocklist(): string[] {
     config.contracts.platformManager,
     config.contracts.stockVault,
     config.contracts.interestDistributor,
-    config.contracts.mockSwap,
   ].filter(Boolean).map(a => a.toLowerCase());
 }
 
