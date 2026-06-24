@@ -83,7 +83,7 @@ export default function HomePage() {
               <span className="landing-gradient">Ownership via NFT.</span>
             </h1>
             <p className="landing-hero-copy">
-              Google Stock NFT packages Google-linked exposure, DeFi yield,
+              G-pass NFT packages Google-linked exposure, DeFi yield,
               secondary-market liquidity, and a redemption-to-token flow into
               one programmable NFT certificate on Ethereum.
             </p>
@@ -119,7 +119,7 @@ export default function HomePage() {
               </h2>
               <p className="landing-pass-sub">
                 A 10,000-supply NFT issuance representing stock-linked exposure
-                with a 3.9% target APY layer distributed via Aave.
+                with a 3.5% target APY layer distributed via Aave.
               </p>
 
               <div className="landing-metrics">
@@ -133,7 +133,7 @@ export default function HomePage() {
                 </div>
                 <div className="landing-metric">
                   <small>Target APY</small>
-                  <strong className="landing-green">3.9%</strong>
+                  <strong className="landing-green">3.5%</strong>
                 </div>
                 <div className="landing-metric">
                   <small>Yield Claim</small>
@@ -169,7 +169,7 @@ export default function HomePage() {
       <section id="features" className="landing-section">
         <div className="landing-container">
           <div className="landing-section-head">
-            <h3>Why Google Stock NFT?</h3>
+            <h3>Why G-pass NFT?</h3>
             <p>
               A new interface for stock-linked assets: understandable like
               stocks, portable like NFTs, programmable like DeFi.
@@ -178,7 +178,7 @@ export default function HomePage() {
           <div className="landing-grid-3">
             {[
               { n: "01", title: "Stock-linked NFT", desc: "Each NFT represents fractional Google stock-linked exposure, replacing complex dashboards with one wallet-native asset." },
-              { n: "02", title: "DeFi Yield Layer", desc: "3.9% target APR from Aave. 20% of every mint routes into DeFi — yield is claimable weekly." },
+              { n: "02", title: "DeFi Yield Layer", desc: "3.5% target APY from Aave. 20% of every mint routes into DeFi — yield is claimable after mint ends." },
               { n: "03", title: "Principal Protection", desc: "80% of mint proceeds are reserved for the Google purchase pool. Your principal is shielded from yield strategies." },
               { n: "04", title: "Secondary Liquidity", desc: "Trade freely on any NFT marketplace. 10% royalty on every transfer feeds back into the purchase pool." },
               { n: "05", title: "Redeem to Token", desc: "After the bulk GOOGLon purchase triggers, redeem your NFT for real tokenized Google stock tokens minus a 5% fee." },
@@ -212,7 +212,7 @@ export default function HomePage() {
                 ["Underlying reference", "Google stock exposure"],
                 ["Mint price", "10 USDC"],
                 ["Supply cap", "10,000 NFTs"],
-                ["Target APY", "3.9%"],
+                ["Target APY", "3.5%"],
                 ["Yield distribution", "Weekly claim"],
                 ["Post-mint utility", "Trade / Claim / Redeem"],
               ].map(([label, value]) => (
@@ -281,7 +281,7 @@ export default function HomePage() {
             Ready to get started?
           </h3>
           <p style={{ color: "var(--muted-landing)", fontSize: 18, marginBottom: 32 }}>
-            Connect your wallet and mint your first Google Stock NFT on Ethereum mainnet.
+            Connect your wallet and mint your first G-pass NFT on Ethereum mainnet.
           </p>
           <Link href="/mint" className="landing-btn" style={{ fontSize: 16, padding: "16px 48px" }}>
             Open App &amp; Mint
@@ -300,7 +300,7 @@ export default function HomePage() {
                 <span className="landing-logo-dot d3" />
                 <span className="landing-logo-dot d4" />
               </span>
-              <span>Stock NFT</span>
+              <span>G-pass</span>
             </div>
             <p>Tokenized stock ownership on Ethereum.</p>
           </div>

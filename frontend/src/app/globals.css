@@ -799,6 +799,105 @@ body {
 }
 .landing-footer p { margin: 8px 0 0; }
 
+/* ─── App Header: Hamburger & Mobile Menu ─── */
+
+.app-hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .2s;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.app-hamburger:hover {
+  background: rgba(255,255,255,.12);
+}
+
+.app-hamburger-line {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text-landing);
+  border-radius: 2px;
+  transition: all .3s ease;
+  transform-origin: center;
+}
+.app-hamburger-line.open:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.app-hamburger-line.open:nth-child(2) {
+  opacity: 0;
+}
+.app-hamburger-line.open:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+/* Mobile menu overlay */
+.app-mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(6,7,11,.88);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 100px 24px 40px;
+  overflow-y: auto;
+}
+.app-mobile-menu-panel {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+.app-mobile-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.app-mobile-nav-link {
+  display: block;
+  padding: 18px 24px;
+  font-size: 20px;
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: 16px;
+  transition: background .2s;
+  letter-spacing: -.02em;
+}
+.app-mobile-nav-link:hover {
+  background: rgba(255,255,255,.06);
+}
+.app-mobile-nav-link:active {
+  background: rgba(255,255,255,.1);
+}
+.app-mobile-wallet {
+  padding-top: 8px;
+}
+.app-mobile-wallet button {
+  font-size: 16px !important;
+  padding: 16px 24px !important;
+}
+
+/* Docs page responsive grids */
+.docs-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 680px) {
+  .docs-2col { grid-template-columns: 1fr; }
+}
+
 /* Responsive */
 @media (max-width: 980px) {
   .landing-hero-grid, .landing-asset-panel { grid-template-columns: 1fr; }
@@ -806,6 +905,8 @@ body {
   .landing-section-head { display: block; }
   .landing-section-head p { margin-top: 14px; }
   .landing-nav-links { display: none; }
+  .app-header-wallet { display: none; }
+  .app-hamburger { display: flex; }
 }
 @media (max-width: 680px) {
   .landing-container { width: min(100% - 28px, 1180px); }

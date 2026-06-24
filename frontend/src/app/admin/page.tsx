@@ -224,7 +224,7 @@ export default function AdminPage() {
                 </div>
                 <div className="landing-metric">
                   <small>Rate</small>
-                  <strong style={{ color: 'var(--gold)' }}>~4-8% APY</strong>
+                  <strong style={{ color: 'var(--gold)' }}>3.5% APY</strong>
                 </div>
               </div>
 

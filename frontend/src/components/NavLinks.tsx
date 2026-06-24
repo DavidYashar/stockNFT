@@ -24,6 +24,7 @@ export function NavLinks() {
     { href: "/mint", label: "Mint" },
     { href: "/dashboard", label: "Portfolio" },
     { href: "/redeem", label: "Redeem" },
+    { href: "/docs", label: "Docs" },
   ];
 
   if (isAdmin) {

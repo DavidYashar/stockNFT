@@ -7,11 +7,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/interfaces/IERC2981.sol";
 
 /**
- * @title GoogleStockNFT
+ * @title GPassNFT
  * @notice ERC-721 NFT — native ETH payments. Mint sends ETH to Treasury EOA.
  *         Loyalty fee on transfer is enforced in _update (for direct transfers).
  *         Marketplaces collect fees via EIP-2981 royaltyInfo.
- *         Max supply: 100. Mint price: configurable ETH amount.
+ *         Max supply: 4083. Mint price: configurable ETH amount.
  */
 contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
     error MintNotActive();
@@ -49,7 +49,7 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
         _;
     }
 
-    constructor(address _initialOwner, uint256 _mintPrice) ERC721("Google Stock NFT", "GOOGL") Ownable(_initialOwner) {
+    constructor(address _initialOwner, uint256 _mintPrice) ERC721("G-pass NFT", "GPASS") Ownable(_initialOwner) {
         require(_mintPrice > 0, "Zero price");
         mintPrice = _mintPrice;
     }
@@ -83,8 +83,10 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
         require(_p > 0, "Zero"); mintPrice = _p;
     }
     function setIrysGateway(string calldata _g) external onlyOwner { irysGateway = _g; }
+    function setContractURI(string calldata _uri) external onlyOwner { contractURI = _uri; }
 
     string public irysGateway = "https://gateway.irys.xyz";
+    string public contractURI;
 
     function resetInterestClock(uint256 tokenId) external {
         require(msg.sender == owner() || msg.sender == platformManager || msg.sender == interestDistributor, "Auth");

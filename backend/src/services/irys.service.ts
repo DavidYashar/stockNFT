@@ -23,10 +23,10 @@ let lastCheckedBlock = 0;
 async function getIrys() {
   const { Uploader } = await import("@irys/upload");
   const { Ethereum } = await import("@irys/upload-ethereum");
-  const irys = Uploader(Ethereum)
+  const builder = Uploader(Ethereum)
     .withWallet(config.irys.privateKey || config.privateKey)
     .withRpc(config.irys.rpcUrl);
-  return config.irys.network === "mainnet" ? irys : irys.devnet();
+  return await (config.irys.network === "mainnet" ? builder.mainnet().build() : builder.devnet().build());
 }
 
 function irysUrl(txId: string): string {

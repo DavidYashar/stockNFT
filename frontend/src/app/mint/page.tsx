@@ -253,7 +253,7 @@ function EconomicsSlideshow() {
     { v: '10 USDC', l: 'You Pay', sub: 'Fixed mint price per NFT' },
     { v: '8 USDC', l: 'Google Purchase (80%)', sub: 'Directed to GOOGL stock acquisition' },
     { v: '2 USDC', l: 'DeFi Yield (20%)', sub: 'Deposited into Aave for yield generation' },
-    { v: '3.9% APR', l: 'Weekly Interest', sub: 'Earned on the DeFi portion via Aave' },
+    { v: '3.5% APY', l: 'Yearly Yield', sub: 'Earned on the DeFi portion via Aave' },
   ];
   const [idx, setIdx] = useState(0);
 

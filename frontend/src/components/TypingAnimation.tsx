@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 const PHRASES = [
   "Mint a share of Google.",
-  "Earn 3.9% APR weekly.",
+  "Earn 3.5% APY via Aave.",
   "Trade freely onchain.",
   "Redeem for GOOGLon.",
 ];
