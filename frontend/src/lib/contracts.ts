@@ -50,7 +50,7 @@ export const STOCK_VAULT_ABI = [
   "function updateTreasuryVault(address)",
   "function receivePool80Funds() payable",
   "function receiveLoyaltyFunds() payable",
-  "function executeGooglePurchase(uint256)",
+  "function executeGooglePurchase(uint256,uint256)",
   "function totalGooglonHeld() view returns (uint256)",
   "function pool80Funds() view returns (uint256)",
   "function loyaltyFunds() view returns (uint256)",
