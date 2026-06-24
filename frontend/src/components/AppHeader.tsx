@@ -47,8 +47,7 @@ export function AppHeader() {
 
   const showAdmin = !!(userAddr && (userAddr === deployerAddr || userAddr === treasuryAddr));
 
-  // No header on landing page
-  if (pathname === "/") return null;
+  const isHome = pathname === "/";
 
   const links = [
     { href: "/mint", label: "Mint" },
@@ -78,7 +77,7 @@ export function AppHeader() {
 
   return (
     <>
-      <header className="landing-nav" style={{ position: 'sticky', top: 0, zIndex: 50 }}>
+      <header className="landing-nav" style={{ position: 'sticky', top: 0, zIndex: 50, display: isHome ? 'none' : undefined }}>
         <div className="landing-nav-inner">
           <Link href="/" className="landing-brand">
             <span className="landing-logo">
