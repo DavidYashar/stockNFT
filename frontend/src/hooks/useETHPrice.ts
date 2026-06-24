@@ -46,7 +46,11 @@ export function useETHPrice() {
     }
   }, []);
 
-  useEffect(() => { fetchPrice(); }, [fetchPrice]);
+  useEffect(() => {
+    fetchPrice();
+    const interval = setInterval(fetchPrice, REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [fetchPrice]);
 
   return { price, loading, isLive, refetch: fetchPrice };
 }
