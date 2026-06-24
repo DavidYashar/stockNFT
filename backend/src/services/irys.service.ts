@@ -12,28 +12,7 @@ import { getProviderOnly, getWallet } from "../contracts";
 import { resolve } from "path";
 import sharp from "sharp";
 
-// ----- ETH Price from CoinGecko (free, cached for 5 min) -----
-let cachedEthPrice = config.ethPriceUsd;
-let lastEthFetch = 0;
-const ETH_PRICE_CACHE_MS = 5 * 60 * 1000; // 5 min
-
-async function getETHPrice(): Promise<number> {
-  const now = Date.now();
-  if (now - lastEthFetch < ETH_PRICE_CACHE_MS) return cachedEthPrice;
-  try {
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
-    if (res.ok) {
-      const data = await res.json();
-      const price = data?.ethereum?.usd;
-      if (typeof price === "number" && price > 0) {
-        cachedEthPrice = price;
-        lastEthFetch = now;
-        return price;
-      }
-    }
-  } catch {}
-  return cachedEthPrice;
-}
+import { getETHPrice } from "./eth-price";
 
 // Template PNG path (loaded at generation time, not embedded in source)
 const TEMPLATE_PATH = resolve(__dirname, "../../../frontend/public/certificate-template.png");

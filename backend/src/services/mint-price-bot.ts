@@ -1,7 +1,7 @@
 /**
  * Mint Price Bot
  *
- * Polls CoinGecko for ETH price, calculates $10 / ETH_price,
+ * Uses multi-source ETH price feed (Coinbase → CoinGecko fallback),
  * and updates the NFT contract's mintPrice if changed by ≥0.5%.
  * Uses deployer key (NFT owner).
  *
@@ -12,27 +12,15 @@ import { ethers } from "ethers";
 import { config } from "../config";
 import { getWallet } from "../contracts";
 
+import { getETHPrice } from "./eth-price";
+
 const POLL_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_CHANGE_PCT = 0.5;     // Only update if price changed >0.5%
 
 let lastEthPrice = 0;
 
-async function fetchETHPrice(): Promise<number> {
-  try {
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
-    if (!res.ok) throw new Error("CoinGecko fetch failed");
-    const data = await res.json();
-    const price = data?.ethereum?.usd;
-    if (typeof price === "number" && price > 0) return price;
-    throw new Error("Invalid price");
-  } catch (err: any) {
-    console.log(`  ⚠️ MintPriceBot: CoinGecko error: ${err.message?.slice(0, 80)}`);
-    return 0;
-  }
-}
-
 async function updateMintPrice() {
-  const ethPrice = await fetchETHPrice();
+  const ethPrice = await getETHPrice();
   if (ethPrice <= 0) return;
 
   // Calculate $10 worth of ETH (configurable via TARGET_USD_PER_MINT)
