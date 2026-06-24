@@ -123,7 +123,7 @@ export default function AdminPage() {
         const aToken = new ethers.Contract(CONTRACT_ADDRESSES.aToken, ATOKEN_ABI, p);
         const usdcAddr = CONTRACT_ADDRESSES.usdc!;
         const reserveData = await aave.getReserveData(usdcAddr);
-        const liquidityIndex = reserveData.liquidityIndex;
+        const liquidityIndex = BigInt(reserveData.liquidityIndex);
         const scaledBalance = await aToken.scaledBalanceOf(tvAddr);
         const RAY = 10n ** 27n;
         const currentValue = (scaledBalance * liquidityIndex) / RAY;
@@ -302,7 +302,7 @@ export default function AdminPage() {
                     const scaledBalance = await aToken.scaledBalanceOf(tv);
                     const reserveData = await aave.getReserveData(usdcAddr);
                     const RAY = 10n ** 27n;
-                    const currentValue = (scaledBalance * reserveData.liquidityIndex) / RAY;
+                    const currentValue = (scaledBalance * BigInt(reserveData.liquidityIndex)) / RAY;
                     if (usdcYield > currentValue) return alert(`Insufficient Aave balance. Max available: ${ethers.formatUnits(currentValue, 6)} USDC`);
 
                     await (await aave.withdraw(usdcAddr, usdcYield, tv)).wait();
