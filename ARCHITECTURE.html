@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Google Stock NFT — Contract Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+  h1 {
+    font-size: 2em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #58a6ff, #bc8cff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: #8b949e; margin-bottom: 32px; font-size: 0.95em; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  .badge-green { background: #1a3a2a; color: #3fb950; }
+  .badge-blue  { background: #1a2a3a; color: #58a6ff; }
+  h2 {
+    font-size: 1.3em;
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #21262d;
+  }
+  .diagram-box {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 24px;
+    margin: 16px 0 32px;
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 32px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid #21262d;
+  }
+  th { color: #8b949e; font-weight: 600; font-size: 0.85em; text-transform: uppercase; }
+  td { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.88em; }
+  td:last-child { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .address { color: #58a6ff; }
+  .check { color: #3fb950; }
+  .note {
+    background: #1a1f2e;
+    border-left: 3px solid #58a6ff;
+    padding: 16px 20px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0 24px;
+    font-size: 0.9em;
+    line-height: 1.6;
+  }
+  .note strong { color: #58a6ff; }
+  .flow-box {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+  }
+  .flow-step {
+    flex: 1;
+    min-width: 140px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .flow-step .icon { font-size: 1.8em; }
+  .flow-step .label { font-size: 0.8em; color: #8b949e; margin-top: 4px; }
+  .flow-step .value { font-size: 0.95em; font-weight: 600; color: #e6edf3; }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    color: #484f58;
+    font-size: 1.2em;
+  }
+  .two-col {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .two-col > .col {
+    flex: 1;
+    min-width: 300px;
+  }
+  footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid #21262d;
+    color: #484f58;
+    font-size: 0.82em;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>🏗️ Google Stock NFT</h1>
+<p class="subtitle">
+  <span class="badge badge-green">Sepolia Deployed</span>
+  <span class="badge badge-blue">June 10, 2026</span>
+  &nbsp;·&nbsp; 7 contracts · 10,000 NFTs · 10 USDC each
+</p>
+
+<h2>📐 Architecture Overview</h2>
+<div class="diagram-box">
+<pre class="mermaid">
+graph TD
+    USER["👤 User"]
+    NFT["🎨 GoogleStockNFT<br/>ERC-1155"]
+    TV["🏦 TreasuryVault<br/>Single Wallet"]
+    PM["⚙️ PlatformManager<br/>Admin + Royalties"]
+    SV["📊 StockVault<br/>GOOGLon + Redeem"]
+    ID["💸 InterestDistributor<br/>2% APR Yield"]
+    AAVE["Aave v3"]
+    UNI["Uniswap V4"]
+    GOOGL["GOOGLon Token"]
+
+    USER -->|"10 USDC mint()"| NFT
+    NFT -->|"receiveUSDC() 80/20"| TV
+    NFT -->|"recordMint()"| PM
+    TV -->|"sweepDeFi() 4h"| AAVE
+    TV -->|"harvestAndDistribute() weekly"| ID
+    ID -->|"claimInterest()"| USER
+    PM -->|"triggerGooglePurchase()"| TV
+    PM -->|"loyalty fees"| SV
+    TV -->|"releaseGoogleFunds()"| SV
+    SV -->|"swap USDC→GOOGLon"| UNI
+    SV -->|"claimRedemption()"| USER
+    USER -->|"secondary trade 10% royalty"| NFT
+    NFT -->|"royalty → receiveLoyalty()"| PM
+</pre>
+</div>
+
+<h2>🔄 Full Lifecycle</h2>
+<div class="diagram-box">
+<pre class="mermaid">
+sequenceDiagram
+    participant U as 👤 User
+    participant N as GoogleStockNFT
+    participant T as TreasuryVault
+    participant P as PlatformManager
+    participant I as InterestDistributor
+    participant S as StockVault
+    participant A as Aave
+    participant G as GOOGLon
+
+    rect rgb(22, 27, 34)
+        Note over U,G: PHASE 1 — Minting
+        U->>N: mint(googlPrice) + 10 USDC
+        N->>T: receiveUSDC(10) → 8 pool80 / 2 pool20
+        N->>P: recordMint(10)
+        N-->>U: NFT minted ✨ (48h interest wait)
+    end
+
+    rect rgb(22, 27, 34)
+        Note over U,G: PHASE 2 — Earning Yield
+        T->>A: sweepDeFi() every 4h
+        A-->>A: yield accrues...
+        T->>I: harvestAndDistribute() weekly
+        U->>I: claimInterest() after 48h
+        I-->>U: 2% APR on 2 USDC principal
+    end
+
+    rect rgb(22, 27, 34)
+        Note over U,G: PHASE 3 — Secondary Trading
+        U->>N: transfer NFT to Buyer
+        N->>I: settleOnTransfer() forfeit interest
+        N-->>Buyer: NFT transferred (clock resets)
+        N->>P: 10% royalty from sale
+    end
+
+    rect rgb(22, 27, 34)
+        Note over U,G: PHASE 4 — Trigger Google Purchase
+        Note over P: mintEnded AND loyaltyFees ≥ gap20
+        P->>T: releaseGoogleFunds()
+        T->>S: pool80 USDC
+        P->>S: loyaltyFees USDC
+        S->>S: executeGooglePurchase() swap
+        S->>S: assignShares() per NFT
+    end
+
+    rect rgb(22, 27, 34)
+        Note over U,G: PHASE 5 — Redemption
+        U->>S: requestRedemption()
+        Note over S: 48h countdown ⏳
+        U->>S: claimRedemption()
+        S->>U: 95% GOOGLon (5% fee)
+    end
+</pre>
+</div>
+
+<h2>💰 Per-NFT Economics</h2>
+<div class="flow-box">
+  <div class="flow-step">
+    <div class="icon">💵</div>
+    <div class="label">User Pays</div>
+    <div class="value">10 USDC</div>
+  </div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">
+    <div class="icon">🏦</div>
+    <div class="label">Pool 80 (80%)</div>
+    <div class="value">8 USDC</div>
+    <div class="label" style="margin-top:6px">Google Purchase</div>
+  </div>
+  <div class="flow-arrow">+</div>
+  <div class="flow-step">
+    <div class="icon">📈</div>
+    <div class="label">Pool 20 (20%)</div>
+    <div class="value">2 USDC</div>
+    <div class="label" style="margin-top:6px">Aave DeFi → 2% APR</div>
+  </div>
+</div>
+
+<div class="note">
+  <strong>💡 How the 20% Gap Works:</strong> Only 80% of mint funds go toward the Google
+  purchase. The missing 20% is filled by <strong>10% royalties from secondary NFT
+  trades</strong>. When <code>mintEnded = true</code> AND <code>loyaltyFees ≥ gap20</code>,
+  the trigger fires and GOOGLon is purchased in one batch for all holders.
+</div>
+
+<h2>📋 Contract Addresses (Sepolia)</h2>
+<table>
+  <tr><th>Contract</th><th>Address</th><th>Role</th></tr>
+  <tr><td>MockUSDC</td><td class="address">0x611A...c3e1</td><td>Test USDC (6 decimals)</td></tr>
+  <tr><td>MockGOOGLon</td><td class="address">0xDB59...0c3C</td><td>Test GOOGL token</td></tr>
+  <tr><td>GoogleStockNFT</td><td class="address">0xef51...C453</td><td>ERC-1155 NFT — mint, transfer, royalty</td></tr>
+  <tr><td>TreasuryVault</td><td class="address">0x07eA...5086</td><td>All USDC — 80/20 accounting, Aave deposits</td></tr>
+  <tr><td>StockVault</td><td class="address">0x5f7a...AF3d</td><td>GOOGLon swap + redemption</td></tr>
+  <tr><td>PlatformManager</td><td class="address">0x8509...46AF</td><td>Royalties, trigger, mint lifecycle</td></tr>
+  <tr><td>InterestDistributor</td><td class="address">0x4E29...05EC</td><td>2% APR yield claims</td></tr>
+</table>
+
+<h2>✅ On-Chain Verification</h2>
+<div class="two-col">
+  <div class="col">
+    <table>
+      <tr><th>Check</th><th>Result</th></tr>
+      <tr><td>NFT mint at $185</td><td class="check">✅ 10 USDC paid</td></tr>
+      <tr><td>80/20 split</td><td class="check">✅ pool80=8, pool20=2</td></tr>
+      <tr><td>48h interest wait</td><td class="check">✅ Jun 10 → Jun 12</td></tr>
+      <tr><td>totalMintPrincipal</td><td class="check">✅ 10 USDC</td></tr>
+    </table>
+  </div>
+  <div class="col">
+    <table>
+      <tr><th>Check</th><th>Result</th></tr>
+      <tr><td>gap20 calculation</td><td class="check">✅ 2 USDC</td></tr>
+      <tr><td>TV → PM wiring</td><td class="check">✅ All 7 links correct</td></tr>
+      <tr><td>Deployer balance</td><td class="check">✅ ~2.5 ETH remaining</td></tr>
+      <tr><td>Build passes</td><td class="check">✅ 15/15 tests</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer>
+  Google Stock NFT · Sepolia Testnet · Deployed June 10, 2026 · Deployer 0x2bAF...c1E
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1f6feb',
+      primaryTextColor: '#c9d1d9',
+      primaryBorderColor: '#30363d',
+      lineColor: '#58a6ff',
+      secondaryColor: '#161b22',
+      tertiaryColor: '#0d1117',
+      noteBkgColor: '#1a1f2e',
+      noteTextColor: '#c9d1d9',
+      sequenceNumberColor: '#0d1117',
+      actorBkg: '#1f6feb',
+      actorBorder: '#58a6ff',
+      actorTextColor: '#ffffff',
+      signalColor: '#c9d1d9',
+      signalTextColor: '#c9d1d9',
+      labelBoxBkgColor: '#161b22',
+      labelBoxBorderColor: '#30363d',
+      labelTextColor: '#c9d1d9',
+      loopTextColor: '#c9d1d9',
+    },
+  });
+</script>
+
+</body>
+</html>

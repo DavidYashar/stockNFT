@@ -1,0 +1,3 @@
+pnpm --dir backend start
+
+pnpm --dir frontend dev

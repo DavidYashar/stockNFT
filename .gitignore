@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+deployed.json
+backend/data/
+coverage/
+coverage.json
+typechain/
+typechain-types/
+cache/
+artifacts/
+dist/
+*.log

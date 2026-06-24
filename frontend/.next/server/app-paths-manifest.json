@@ -1,0 +1,7 @@
+{
+  "/dashboard/page": "app/dashboard/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/redeem/page": "app/redeem/page.js",
+  "/mint/page": "app/mint/page.js",
+  "/marketplace/page": "app/marketplace/page.js"
+}

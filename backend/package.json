@@ -1,0 +1,26 @@
+{
+  "name": "google-stock-nft-backend",
+  "version": "1.0.0",
+  "description": "Keeper bots and services for Google Stock NFT",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "sweeper": "ts-node src/bots/defi-sweeper.ts",
+    "harvester": "ts-node src/bots/yield-harvester.ts",
+    "monitor": "ts-node src/bots/trigger-monitor.ts",
+    "irys": "ts-node src/services/irys.service.ts"
+  },
+  "dependencies": {
+    "@irys/upload": "^0.0.15",
+    "@irys/upload-ethereum": "^0.0.16",
+    "dotenv": "^16.3.0",
+    "ethers": "^6.9.0",
+    "node-cron": "^3.0.0",
+    "sharp": "^0.35.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  }
+}
