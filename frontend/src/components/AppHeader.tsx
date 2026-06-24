@@ -7,6 +7,35 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import Link from "next/link";
 
+function WalletButton() {
+  return (
+    <ConnectButton.Custom>
+      {({ openConnectModal, openAccountModal, openChainModal, account, chain, mounted }) => {
+        const ready = mounted;
+        const connected = ready && account && chain;
+
+        if (!ready) {
+          return <span className="landing-btn secondary" style={{ opacity: 0.5, cursor: 'default' }}>Loading...</span>;
+        }
+
+        if (!connected) {
+          return <button onClick={openConnectModal} className="landing-btn" type="button">Connect Wallet</button>;
+        }
+
+        if (chain?.unsupported) {
+          return <button onClick={openChainModal} className="landing-btn secondary" type="button">Wrong network</button>;
+        }
+
+        return (
+          <button onClick={openAccountModal} className="landing-btn secondary" type="button">
+            {account.ensName ?? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`}
+          </button>
+        );
+      }}
+    </ConnectButton.Custom>
+  );
+}
+
 export function AppHeader() {
   const pathname = usePathname();
   const { address } = useAccount();
@@ -16,10 +45,9 @@ export function AppHeader() {
   const treasuryAddr = (CONTRACT_ADDRESSES.treasuryVaultAddress || CONTRACT_ADDRESSES.treasuryEOA)?.toLowerCase();
   const userAddr = address?.toLowerCase();
 
-  // Admin button visible ONLY when connected with deployer or treasury wallet
   const showAdmin = !!(userAddr && (userAddr === deployerAddr || userAddr === treasuryAddr));
 
-  // No header on landing page — it has its own nav
+  // No header on landing page
   if (pathname === "/") return null;
 
   const links = [
@@ -52,7 +80,6 @@ export function AppHeader() {
     <>
       <header className="landing-nav" style={{ position: 'sticky', top: 0, zIndex: 50 }}>
         <div className="landing-nav-inner">
-          {/* Left: Brand logo — links to home */}
           <Link href="/" className="landing-brand">
             <span className="landing-logo">
               <span className="landing-logo-dot d1" />
@@ -63,7 +90,7 @@ export function AppHeader() {
             <span>Stock NFT</span>
           </Link>
 
-          {/* Center: Nav links — hidden on mobile */}
+          {/* Desktop nav links */}
           <div className="landing-nav-links">
             {links.map((link) => (
               <Link
@@ -79,36 +106,12 @@ export function AppHeader() {
             ))}
           </div>
 
-          {/* Right: Wallet + Hamburger */}
+          {/* Desktop wallet + Hamburger */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div className="app-header-wallet">
-              <ConnectButton.Custom>
-                {({ openConnectModal, openAccountModal, openChainModal, account, chain, mounted }) => {
-                  const ready = mounted;
-                  const connected = ready && account && chain;
-
-                  if (!ready) {
-                    return <span className="landing-btn secondary" style={{ opacity: 0.5, cursor: 'default' }}>Loading...</span>;
-                  }
-
-                  if (!connected) {
-                    return <button onClick={openConnectModal} className="landing-btn" type="button">Connect Wallet</button>;
-                  }
-
-                  if (chain?.unsupported) {
-                    return <button onClick={openChainModal} className="landing-btn secondary" type="button">Wrong network</button>;
-                  }
-
-                  return (
-                    <button onClick={openAccountModal} className="landing-btn secondary" type="button">
-                      {account.ensName ?? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`}
-                    </button>
-                  );
-                }}
-              </ConnectButton.Custom>
+              <WalletButton />
             </div>
 
-            {/* Hamburger — visible only on mobile */}
             <button
               className="app-hamburger"
               onClick={() => setMenuOpen(!menuOpen)}
@@ -144,30 +147,7 @@ export function AppHeader() {
               ))}
             </nav>
             <div className="app-mobile-wallet">
-              <ConnectButton.Custom>
-                {({ openConnectModal, openAccountModal, openChainModal, account, chain, mounted }) => {
-                  const ready = mounted;
-                  const connected = ready && account && chain;
-
-                  if (!ready) {
-                    return <span className="landing-btn secondary" style={{ opacity: 0.5, width: '100%', textAlign: 'center' }}>Loading...</span>;
-                  }
-
-                  if (!connected) {
-                    return <button onClick={openConnectModal} className="landing-btn" type="button" style={{ width: '100%' }}>Connect Wallet</button>;
-                  }
-
-                  if (chain?.unsupported) {
-                    return <button onClick={openChainModal} className="landing-btn secondary" type="button" style={{ width: '100%' }}>Wrong network</button>;
-                  }
-
-                  return (
-                    <button onClick={openAccountModal} className="landing-btn secondary" type="button" style={{ width: '100%' }}>
-                      {account.ensName ?? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`}
-                    </button>
-                  );
-                }}
-              </ConnectButton.Custom>
+              <WalletButton />
             </div>
           </div>
         </div>
