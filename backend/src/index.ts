@@ -8,20 +8,18 @@
 
 import "./services/irys.service";
 import { startLoyaltyBot, getLoyaltyFees } from "./services/loyalty-bot";
-import { startMintPriceBot } from "./services/mint-price-bot";
 import * as http from "http";
 
 console.log("═══════════════════════════════════════");
 console.log("  Google Stock NFT — Backend Running");
 console.log("  IRYS metadata service active.");
 console.log("  Loyalty Fee Bot active.");
-console.log("  Mint Price Bot active.");
+console.log("  Mint price: manually via /admin page.");
 console.log("  DeFi operations: use admin page + WalletConnect.");
 console.log("  Press Ctrl+C to stop.");
 console.log("═══════════════════════════════════════\n");
 
 startLoyaltyBot();
-startMintPriceBot();
 
 // Simple API server for admin page to query detected loyalty fees
 const API_PORT = parseInt(process.env.API_PORT || "3002", 10);
