@@ -153,6 +153,11 @@ export default function AdminPage() {
     return new ethers.Contract(CONTRACT_ADDRESSES.stockVault, STOCK_VAULT_ABI, await p.getSigner());
   }
 
+  async function getSignerNft() {
+    const p = new ethers.BrowserProvider(window.ethereum!);
+    return new ethers.Contract(CONTRACT_ADDRESSES.googleStockNFT, GOOGLE_STOCK_NFT_ABI, await p.getSigner());
+  }
+
   const mintPriceNum = Number(mintPriceEth) || 0.005;
 
   const statStyle: React.CSSProperties = {
@@ -445,6 +450,22 @@ export default function AdminPage() {
                   {actionLabel === "Burn" ? "⏳ ..." : `Burn ${burnAmount}`}
                 </button>
               </div>
+
+              {/* Set Mint Price */}
+              <p style={{ fontSize: 13, color: 'var(--muted-landing)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Set Mint Price (ETH)</p>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'flex-end' }}>
+                <input type="number" step="0.0001" value={mintPriceEth} onChange={(e) => setMintPriceEth(e.target.value)}
+                  style={{ padding: '10px 14px', fontSize: 14, flex: 1, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, color: '#fff' }} placeholder="0.005" />
+                <button onClick={() => doAction("Set Mint Price", async () => {
+                  const nft = await getSignerNft();
+                  await (await nft.setMintPrice(ethers.parseEther(mintPriceEth || "0.005"))).wait();
+                })} disabled={loading || !isDeployer} className="landing-btn secondary" style={{ padding: '10px 20px', whiteSpace: 'nowrap', opacity: !isDeployer ? 0.4 : 1 }}>
+                  {actionLabel === "Set Mint Price" ? "⏳ ..." : "Update"}
+                </button>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--muted2-landing)', marginTop: -16, marginBottom: 24 }}>
+                Current: {mintPriceEth} ETH ≈ ${(mintPriceNum * ethPriceUsd).toFixed(2)} USD &nbsp;|&nbsp; Target: ~$10 USD → ~{(10 / (ethPriceUsd || 2000)).toFixed(6)} ETH
+              </p>
 
               {/* Google Purchase */}
               <p style={{ fontSize: 13, color: 'var(--muted-landing)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>Google Purchase</p>
