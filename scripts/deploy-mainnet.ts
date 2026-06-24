@@ -6,16 +6,17 @@ import { ethers } from "hardhat";
  * Uses REAL token addresses (no mocks). Reads configuration from environment.
  *
  * Required env vars:
- *   MAINNET_RPC_URL          — Ethereum mainnet RPC
- *   MAINNET_PRIVATE_KEY       — Deployer private key (fresh, never used on testnet)
- *   TREASURY_EOA              — Treasury EOA address
- *   GOOGLON_TOKEN             — Real GOOGLon (Ondo Finance) token address
- *   USDC_TOKEN                — USDC: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
- *   WETH_TOKEN                — WETH: 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
- *   UNISWAP_V3_ROUTER         — Uniswap V3 SwapRouter: 0xE592427A0AEce92De3Edee1F18E0157C05861564
- *   UNISWAP_V3_POOL_FEE       — Pool fee tier for WETH/GOOGLon (e.g., 3000 = 0.3%)
- *   AAVE_V3_POOL              — Aave V3 Pool: 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2
- *   MAINNET_MINT_PRICE_ETH    — Initial mint price in ETH (default: 0.005)
+ *   MAINNET_RPC_URL                  — Ethereum mainnet RPC
+ *   PRIVATE_KEY                      — Deployer private key (fresh, never used on testnet)
+ *   TREASURY_EOA                     — Treasury EOA address
+ *   GOOGLON_TOKEN                    — Real GOOGLon (Ondo Finance) token address
+ *   USDC_TOKEN                       — (optional, default: 0xA0b86991...)
+ *   WETH_TOKEN                       — (optional, default: 0xC02aaA39...)
+ *   UNISWAP_V3_ROUTER                — (optional, default: 0xE592427A...)
+ *   UNISWAP_V3_WETH_USDC_FEE         — (optional, default: 500 = 0.05%)
+ *   UNISWAP_V3_USDC_GOOGLON_FEE      — (optional, default: 10000 = 1%)
+ *   AAVE_V3_POOL                     — (optional, default: 0x87870Bca...)
+ *   MAINNET_MINT_PRICE_ETH           — Initial mint price in ETH (default: 0.005)
  *
  * Usage:
  *   npx hardhat run scripts/deploy-mainnet.ts --network mainnet
