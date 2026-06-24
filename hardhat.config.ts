@@ -33,7 +33,7 @@ const config: HardhatUserConfig = {
       forking: process.env.MAINNET_RPC_URL
         ? {
             url: process.env.MAINNET_RPC_URL,
-            blockNumber: 20250000,
+            blockNumber: 25350000, // June 2026 — GOOGLon pools exist
           }
         : undefined,
     },

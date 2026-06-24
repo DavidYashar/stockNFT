@@ -35,7 +35,8 @@ async function main() {
   const usdcAddr = process.env.USDC_TOKEN || "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
   const wethAddr = process.env.WETH_TOKEN || "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
   const uniRouter = process.env.UNISWAP_V3_ROUTER || "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-  const poolFee = parseInt(process.env.UNISWAP_V3_POOL_FEE || "3000");
+  const wethUsdcFee = parseInt(process.env.UNISWAP_V3_WETH_USDC_FEE || "500");     // 0.05%
+  const usdcGooglonFee = parseInt(process.env.UNISWAP_V3_USDC_GOOGLON_FEE || "10000"); // 1%
   const aavePoolAddr = process.env.AAVE_V3_POOL || "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
 
   if (!googlonAddr) throw new Error("GOOGLON_TOKEN not set — must provide real GOOGLon address");
@@ -44,7 +45,7 @@ async function main() {
   console.log("WETH:", wethAddr);
   console.log("GOOGLon:", googlonAddr);
   console.log("Uniswap V3 Router:", uniRouter);
-  console.log("Pool Fee:", poolFee);
+  console.log("Pool WETH/USDC fee:", wethUsdcFee, "| USDC/GOOGLon fee:", usdcGooglonFee);
   console.log("Aave V3 Pool:", aavePoolAddr);
   console.log("Treasury EOA:", treasuryEOA);
   console.log("");
@@ -54,9 +55,11 @@ async function main() {
   const SwapAdapter = await ethers.getContractFactory("GooglonSwapAdapter");
   const swapAdapter = await SwapAdapter.deploy(
     wethAddr,
+    usdcAddr,
     googlonAddr,
     uniRouter,
-    poolFee,
+    wethUsdcFee,
+    usdcGooglonFee,
     deployer.address
   );
   await swapAdapter.waitForDeployment();
