@@ -109,7 +109,7 @@ export default function MintPage() {
       {/* Section Head */}
       <div className="landing-section-head" style={{ marginBottom: 32 }}>
         <h3>Mint G-Pass</h3>
-        <p>Pay 10 USDC worth of ETH. 80% reserved for Google purchase, 20% earns DeFi yield in Aave.</p>
+        <p>Pay {contractMintPrice} ETH (~${actualDollar.toFixed(2)} USD). 80% reserved for Google purchase, 20% earns DeFi yield in Aave.</p>
       </div>
 
       {/* Mint Grid */}
@@ -126,14 +126,14 @@ export default function MintPage() {
 
           <div style={{ marginBottom: 28 }}>
             <small style={{ color: 'var(--muted2-landing)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5, fontWeight: 700 }}>Price</small>
-            <div style={{ fontSize: 36, fontWeight: 700, marginTop: 4, letterSpacing: '-.03em' }}>10 USDC</div>
-            <div style={{ fontSize: 14, color: 'var(--muted-landing)', marginTop: 4 }}>≈ ${safePrice.toFixed(2)} USD</div>
+            <div style={{ fontSize: 36, fontWeight: 700, marginTop: 4, letterSpacing: '-.03em' }}>{contractMintPrice} ETH</div>
+            <div style={{ fontSize: 14, color: 'var(--muted-landing)', marginTop: 4 }}>≈ ${actualDollar.toFixed(2)} USD</div>
           </div>
 
           <div style={{ borderTop: '1px solid rgba(255,255,255,.09)', borderBottom: '1px solid rgba(255,255,255,.09)', padding: '20px 0', marginBottom: 24 }}>
             <small style={{ color: 'var(--muted2-landing)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5, fontWeight: 700, marginBottom: 12, display: 'block' }}>You Pay</small>
             <div className="landing-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
-              <span>NFT Price</span><strong>10 USDC</strong>
+              <span>NFT Price</span><strong>{contractMintPrice} ETH</strong>
             </div>
             <div className="landing-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
               <span>Network Fee (est.)</span><strong style={{ color: 'var(--muted2-landing)' }}>~0.001 ETH</strong>
