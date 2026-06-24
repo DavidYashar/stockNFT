@@ -21,6 +21,7 @@ export const GOOGLE_STOCK_NFT_ABI = [
   "function mint(uint256 googlPrice) payable returns (uint256)",
   "function mintActive() view returns (bool)",
   "function mintPrice() view returns (uint256)",
+  "function setMintPrice(uint256) external",
   "function treasuryEOA() view returns (address)",
   "function ownerOf(uint256) view returns (address)",
   "function balanceOf(address) view returns (uint256)",
