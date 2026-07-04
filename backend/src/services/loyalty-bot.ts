@@ -22,7 +22,7 @@ import * as path from "path";
 
 const DATA_FILE = path.resolve(__dirname, "../../data/loyalty-fees.json");
 const STATE_FILE = path.resolve(__dirname, "../../data/loyalty-state.json");
-const POLL_MS = parseInt(process.env.LOYALTY_POLL_MS || "30000", 10);
+const POLL_MS = parseInt(process.env.LOYALTY_POLL_MS || "180000", 10); // 3 min
 const CHAIN_ID = process.env.LOYALTY_CHAIN_ID || "1";
 // Only process transactions after this timestamp (unix seconds). Defaults to now on first start.
 const START_TIMESTAMP = parseInt(process.env.LOYALTY_START_TIMESTAMP || "0", 10);
@@ -117,8 +117,10 @@ async function fetchEtherscan(action: "txlist" | "txlistinternal", address: stri
     const res = await fetch(url);
     const json = await res.json();
     if (json.status === "1" && Array.isArray(json.result)) return json.result;
-    if (json.status === "0" && json.result?.includes("No transactions")) return [];
-    console.log(`  ⚠️ Etherscan ${action}: ${json.result || json.message}`);
+    if (json.status === "0" && (json.message?.includes("No transactions") || (Array.isArray(json.result) && json.result.length === 0))) return [];
+    // Skip logging for transient server errors
+    if (json.message?.includes("timeout") || json.message?.includes("too busy")) return [];
+    console.log(`  ⚠️ Etherscan ${action}: ${json.message || JSON.stringify(json.result)}`);
     return [];
   } catch (err: any) {
     console.log(`  ⚠️ Etherscan fetch failed: ${err.message?.slice(0, 60)}`);

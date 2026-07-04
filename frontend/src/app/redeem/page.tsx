@@ -205,8 +205,7 @@ export default function RedeemPage() {
         <div className="landing-card" style={{ textAlign: 'center', padding: 48 }}>
           <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Purchase Not Yet Complete</h3>
           <p style={{ color: 'var(--muted-landing)', fontSize: 14, maxWidth: 480, margin: '0 auto', lineHeight: 1.8 }}>
-            The one-time GOOGLon bulk purchase hasn&apos;t been triggered yet.
-            This happens when minting ends AND loyalty fees from secondary trades cover the 20% gap.
+            Purchase not finalized yet. Please wait for redemption to become available.
           </p>
         </div>
       )}

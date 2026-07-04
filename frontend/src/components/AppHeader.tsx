@@ -53,7 +53,6 @@ export function AppHeader() {
     { href: "/mint", label: "Mint" },
     { href: "/dashboard", label: "Portfolio" },
     { href: "/redeem", label: "Redeem" },
-    { href: "/docs", label: "Docs" },
   ];
 
   if (showAdmin) {
@@ -80,12 +79,7 @@ export function AppHeader() {
       <header className="landing-nav" style={{ position: 'sticky', top: 0, zIndex: 50, display: isHome ? 'none' : undefined }}>
         <div className="landing-nav-inner">
           <Link href="/" className="landing-brand">
-            <span className="landing-logo">
-              <span className="landing-logo-dot d1" />
-              <span className="landing-logo-dot d2" />
-              <span className="landing-logo-dot d3" />
-              <span className="landing-logo-dot d4" />
-            </span>
+            <img src="/logo.jpg" alt="StockNFT" style={{ width: 38, height: 38, borderRadius: 12 }} />
             <span>Stock NFT</span>
           </Link>
 

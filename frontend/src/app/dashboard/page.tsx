@@ -129,7 +129,7 @@ export default function DashboardPage() {
           )}
 
           {/* Stats Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 32 }}>
+          <div className="dash-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 32 }}>
             {[
               { v: nfts.length, l: 'NFTs Owned' },
               { v: totalInterest.toFixed(6), l: 'Pending Interest (ETH)', c: 'var(--green-landing)' },
@@ -153,7 +153,7 @@ export default function DashboardPage() {
                 <div key={n.tokenId} className="landing-card" style={{ padding: 24, minHeight: 'auto', cursor: 'pointer' }}
                   onClick={() => setSelectedNFT(n)}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <div className="nft-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       {n.metadataImage && !n.metadataImage.includes('GOOGLE_STOCK_NFT_ART') ? (
                         <img src={n.metadataImage} alt={n.metadataName} style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover', background: 'rgba(255,255,255,.05)' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -195,7 +195,7 @@ export default function DashboardPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: 20
         }} onClick={() => setSelectedNFT(null)}>
-          <div style={{
+          <div className="modal-inner" style={{
             background: '#0d1019', borderRadius: 30,
             border: '1px solid rgba(255,255,255,.13)',
             boxShadow: '0 32px 100px rgba(0,0,0,.55)',
@@ -265,6 +265,18 @@ export default function DashboardPage() {
           }
           .nft-grid-4 {
             grid-template-columns: repeat(2, 1fr) !important;
+          }
+          .nft-card-header {
+            flex-direction: column !important;
+            gap: 12px !important;
+            align-items: flex-start !important;
+          }
+          .nft-card-header button {
+            width: 100%;
+          }
+          .modal-inner {
+            padding: 24px !important;
+            margin: 0 12px;
           }
         }
         @media (max-width: 480px) {

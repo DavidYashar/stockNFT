@@ -217,7 +217,7 @@ export default function MintPage() {
 
       {/* Economics Section */}
       <div className="landing-section" style={{ paddingTop: 0 }}>
-        <EconomicsSlideshow />
+        <EconomicsSlideshow shares={shares} safePrice={safePrice} />
       </div>
 
       <style jsx>{`
@@ -248,12 +248,11 @@ export default function MintPage() {
   );
 }
 
-function EconomicsSlideshow() {
+function EconomicsSlideshow({ shares, safePrice }: { shares: string; safePrice: number }) {
   const steps = [
-    { v: '10 USDC', l: 'You Pay', sub: 'Fixed mint price per NFT' },
-    { v: '8 USDC', l: 'Google Purchase (80%)', sub: 'Directed to GOOGL stock acquisition' },
-    { v: '2 USDC', l: 'DeFi Yield (20%)', sub: 'Deposited into Aave for yield generation' },
-    { v: '3.5% APY', l: 'Yearly Yield', sub: 'Earned on the DeFi portion via Aave' },
+    { v: '$10', l: 'Fixed Mint Price', sub: 'Pay the same amount every time' },
+    { v: '3.5% APY', l: 'Stablecoin Yield', sub: 'Earned on top of your shares' },
+    { v: `~${shares}`, l: 'Google Shares', sub: `At $${safePrice.toFixed(0)}/share` },
   ];
   const [idx, setIdx] = useState(0);
 
@@ -266,10 +265,6 @@ function EconomicsSlideshow() {
 
   return (
     <>
-      <div className="landing-section-head" style={{ marginBottom: 28 }}>
-        <h3>Per-NFT Economics</h3>
-        <p>Where your 10 USDC goes after minting.</p>
-      </div>
       <div style={{
         maxWidth: 700, margin: '0 auto',
         padding: '48px 40px',
