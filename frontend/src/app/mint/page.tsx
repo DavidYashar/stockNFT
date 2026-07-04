@@ -109,7 +109,6 @@ export default function MintPage() {
       {/* Section Head */}
       <div className="landing-section-head" style={{ marginBottom: 32 }}>
         <h3>Mint G-Pass</h3>
-        <p>Pay {contractMintPrice} ETH (~${actualDollar.toFixed(2)} USD). 80% reserved for Google purchase, 20% earns DeFi yield in Aave.</p>
       </div>
 
       {/* Mint Grid */}
