@@ -1,297 +1,351 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ethers } from "ethers";
-import { useAccount } from "wagmi";
-import { CONTRACT_ADDRESSES, GOOGLE_STOCK_NFT_ABI } from "@/lib/contracts";
-import { NFT_CONFIG, TOKEN_DECIMALS } from "@/lib/constants";
-import { useGOOGLonPrice } from "@/hooks/useGOOGLonPrice";
-import { useETHPrice } from "@/hooks/useETHPrice";
-import CertificateSVG from "@/components/CertificateSVG";
+import { useState, useEffect, useCallback } from "react";
+import {
+  useAccount,
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useBalance,
+} from "wagmi";
+import { keccak256, encodePacked, type Address } from "viem";
+import { NFT_ABI, PLATFORM_ABI, ERC20_ABI, FAUCET_ABI, ADDRESSES } from "@/lib/contracts";
+import { MINT_PRICE, MINT_PHASE, TOKEN_DECIMALS } from "@/lib/constants";
+import { formatUnits, parseUnits } from "ethers";
+
+// ====================================================================
+// Helpers
+// ====================================================================
+
+function getPhaseLabel(phase: number): string {
+  switch (phase) {
+    case MINT_PHASE.NONE:
+      return "Not Started";
+    case MINT_PHASE.WHITELIST:
+      return "Whitelist";
+    case MINT_PHASE.PUBLIC:
+      return "Public";
+    case MINT_PHASE.ENDED:
+      return "Ended";
+    default:
+      return "Unknown";
+  }
+}
+
+function getPhasePrice(phase: number): number {
+  return phase === MINT_PHASE.WHITELIST ? MINT_PRICE.WHITELIST : MINT_PRICE.PUBLIC;
+}
+
+// ====================================================================
+// Page Component
+// ====================================================================
 
 export default function MintPage() {
   const { address, isConnected } = useAccount();
-  const { price: liveGOOGLonPrice, loading: priceLoading, isLive } = useGOOGLonPrice();
-  const { price: ethPrice, isLive: ethLive } = useETHPrice();
-  const [googlPrice, setGooglPrice] = useState<string>("365.00");
-  const [minting, setMinting] = useState(false);
-  const [txHash, setTxHash] = useState("");
-  const [mintActive, setMintActive] = useState(true);
-  const [contractMintPrice, setContractMintPrice] = useState<string>("0.005");
-  const [ethBalance, setEthBalance] = useState<string>("0");
-  const [totalMinted, setTotalMinted] = useState(0);
-  const [totalBurned, setTotalBurned] = useState(0);
-  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    if (isLive && liveGOOGLonPrice > 0) setGooglPrice(liveGOOGLonPrice.toFixed(2));
-  }, [liveGOOGLonPrice, isLive]);
+  // ---- On-chain reads ----
+  const { data: phase } = useReadContract({
+    address: ADDRESSES.nft,
+    abi: NFT_ABI,
+    functionName: "mintPhase",
+    query: { refetchInterval: 5000 },
+  });
 
-  useEffect(() => {
-    if (isConnected && window.ethereum) {
-      loadState(new ethers.BrowserProvider(window.ethereum));
+  const { data: whitelistRoot } = useReadContract({
+    address: ADDRESSES.nft,
+    abi: NFT_ABI,
+    functionName: "whitelistRoot",
+  });
+
+  const { data: totalSupply } = useReadContract({
+    address: ADDRESSES.nft,
+    abi: NFT_ABI,
+    functionName: "totalSupply",
+    query: { refetchInterval: 5000 },
+  });
+
+  const { data: usdgBalance } = useBalance({
+    address,
+    token: ADDRESSES.usdg,
+    query: { refetchInterval: 5000 },
+  });
+
+  const { data: usdgAllowance } = useReadContract({
+    address: ADDRESSES.usdg,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [address as Address, ADDRESSES.nft],
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
+
+  // ---- Local state ----
+  const [mintCount, setMintCount] = useState(1);
+  const [faucetLoading, setFaucetLoading] = useState(false);
+  const [faucetMsg, setFaucetMsg] = useState("");
+  const [approveHash, setApproveHash] = useState<`0x${string}` | undefined>();
+  const [mintHash, setMintHash] = useState<`0x${string}` | undefined>();
+
+  const phaseNum: number = Number(phase ?? 0);
+  const pricePer = getPhasePrice(phaseNum);
+  const totalUSDG = pricePer * mintCount;
+  const totalUSDGWei = parseUnits(String(totalUSDG), TOKEN_DECIMALS.USDG);
+
+  // ---- Auto-generate Merkle proof (single-leaf tree for address) ----
+  const proof: `0x${string}`[] = [];
+  let isWhitelisted = false;
+  if (address && whitelistRoot && whitelistRoot !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+    const leaf = keccak256(encodePacked(["address"], [address]));
+    isWhitelisted = leaf === whitelistRoot;
+    // For a single-leaf tree, the proof is empty (root == leaf hash)
+    // The contract will verify keccak256(abi.encodePacked(account)) == root
+  }
+
+  // ---- Need approval? ----
+  const needApproval =
+    isConnected &&
+    usdgAllowance !== undefined &&
+    BigInt(usdgAllowance as any) < BigInt(totalUSDGWei);
+
+  // ---- Write hooks ----
+  const {
+    writeContract: approveUSDG,
+    data: approveData,
+    isPending: approvePending,
+  } = useWriteContract();
+
+  const {
+    writeContract: doMint,
+    data: mintData,
+    isPending: mintPending,
+  } = useWriteContract();
+
+  // ---- Receipt tracking ----
+  const { isLoading: approveConfirming, isSuccess: approveSuccess } =
+    useWaitForTransactionReceipt({ hash: approveData || approveHash });
+
+  const { isLoading: mintConfirming, isSuccess: mintSuccess } =
+    useWaitForTransactionReceipt({ hash: mintData || mintHash });
+
+  // ---- Faucet ----
+  const faucet = useCallback(async () => {
+    if (!address) return;
+    setFaucetLoading(true);
+    setFaucetMsg("");
+    try {
+      const res = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFaucetMsg(`Sent 1000 USDG! Tx: ${data.txHash?.slice(0, 10)}...`);
+      } else {
+        setFaucetMsg(data.error || "Faucet failed");
+      }
+    } catch (e: any) {
+      setFaucetMsg(e.message || "Faucet error");
     }
-  }, [address, isConnected]);
+    setFaucetLoading(false);
+  }, [address]);
 
-  async function loadState(p: ethers.BrowserProvider) {
-    setLoadError(false);
-    try {
-      const nft = new ethers.Contract(CONTRACT_ADDRESSES.googleStockNFT, GOOGLE_STOCK_NFT_ABI, p);
-      setMintActive(await nft.mintActive());
-      const onChainMintPrice = await nft.mintPrice();
-      setContractMintPrice(ethers.formatEther(onChainMintPrice));
-      if (address) setEthBalance(ethers.formatEther(await p.getBalance(address)));
-      setTotalMinted(Number(await nft.totalSupply()));
-      const pm = new ethers.Contract(CONTRACT_ADDRESSES.platformManager, ["function totalMintPrincipal() view returns (uint256)","function totalBurned() view returns (uint256)"], p);
-      setTotalBurned(Number(await pm.totalBurned()));
-    } catch { setLoadError(true); }
+  // ---- Approve USDG ----
+  const handleApprove = () => {
+    approveUSDG({
+      address: ADDRESSES.usdg,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [ADDRESSES.nft, totalUSDGWei],
+    });
+  };
+
+  // ---- Mint ----
+  const handleMint = () => {
+    doMint({
+      address: ADDRESSES.nft,
+      abi: NFT_ABI,
+      functionName: "mint",
+      args: [address as Address, proof],
+    });
+  };
+
+  // ---- Track hashes ----
+  useEffect(() => {
+    if (approveData) setApproveHash(approveData);
+  }, [approveData]);
+  useEffect(() => {
+    if (mintData) setMintHash(mintData);
+  }, [mintData]);
+
+  // ====================================================================
+  // Render
+  // ====================================================================
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <h1 className="text-3xl font-bold mb-4">Google Stock NFT</h1>
+        <p className="text-gray-400 mb-8">Connect your wallet to mint</p>
+      </div>
+    );
   }
-
-  async function mint() {
-    if (!address || !window.ethereum) return alert("Connect wallet first.");
-    setMinting(true); setTxHash("");
-    try {
-      const p = new ethers.BrowserProvider(window.ethereum);
-      const signer = await p.getSigner();
-      const nft = new ethers.Contract(CONTRACT_ADDRESSES.googleStockNFT, GOOGLE_STOCK_NFT_ABI, signer);
-      const mintPriceWei = ethers.parseEther(contractMintPrice);
-      const tx = await nft.mint(ethers.parseUnits(googlPrice, TOKEN_DECIMALS.GOOGL_PRICE), { value: mintPriceWei });
-      setTxHash(tx.hash);
-      await tx.wait();
-      loadState(p);
-    } catch (err: any) { alert(`Mint failed: ${err.message?.slice(0, 100)}`); }
-    setMinting(false);
-  }
-
-  const mintPriceNum = Number(contractMintPrice) || 0.005;
-  const safePrice = Math.max(0.01, Number(googlPrice) || 365);
-  const targetUsd = NFT_CONFIG.TARGET_USD_PER_MINT;
-  const actualDollar = mintPriceNum * ethPrice;
-  const shares = (targetUsd / safePrice).toFixed(6);
 
   return (
-    <div className="app-page">
-      <div className="landing-container">
-      {!mintActive && (
-        <div style={{
-          textAlign: 'center',
-          marginBottom: 32,
-          padding: '10px 16px',
-          borderRadius: 22,
-          background: 'rgba(251,191,36,.06)',
-          border: '1px solid rgba(251,191,36,.3)',
-        }}>
-          <p style={{ fontSize: 18, color: 'var(--yellow)', margin: 0 }}>⏸ Minting is currently closed</p>
-        </div>
-      )}
-      {loadError && (
-        <div className="landing-card" style={{ textAlign: 'center', marginBottom: 24, borderColor: 'rgba(255,142,155,.3)', background: 'rgba(255,142,155,.06)' }}>
-          <p style={{ fontSize: 14, color: 'var(--red-landing)', margin: 0 }}>⚠️ Could not load on-chain data. Check your connection.</p>
-        </div>
-      )}
+    <div className="max-w-2xl mx-auto px-4 py-12">
+      <h1 className="text-3xl font-bold mb-2">Mint Google Stock NFT</h1>
 
-      {/* Progress Bar */}
-      <div className="landing-progress-wrap" style={{ marginBottom: 32, padding: '10px 14px' }}>
-        <div className="landing-progress-head" style={{ marginBottom: 6, fontSize: 12 }}>
-          <span>Mint Progress</span>
-          <span><b>{totalMinted}</b> / {NFT_CONFIG.MAX_SUPPLY - totalBurned}</span>
-        </div>
-        <div className="landing-progress-bar" style={{ height: 6 }}>
-          <div className="landing-bar-fill" style={{
-            width: Math.min(((NFT_CONFIG.MAX_SUPPLY - totalBurned) > 0 ? (totalMinted / (NFT_CONFIG.MAX_SUPPLY - totalBurned)) * 100 : 100), 100) + '%',
-          }} />
-        </div>
-        <p style={{ fontSize: 11, color: 'var(--muted-landing)', marginTop: 6, marginBottom: 0 }}>
-          {totalMinted < (NFT_CONFIG.MAX_SUPPLY - totalBurned) ? `${(NFT_CONFIG.MAX_SUPPLY - totalBurned - totalMinted).toLocaleString()} NFTs remaining` : 'All NFTs minted!'}
-        </p>
-      </div>
-
-      {/* Section Head */}
-      <div className="landing-section-head" style={{ marginBottom: 32 }}>
-        <h3>Mint G-Pass</h3>
-      </div>
-
-      {/* Mint Grid */}
-      <div className="mint-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 48 }}>
-        {/* Left: Purchase Card */}
-        <div className="landing-card" style={{ padding: 32, minHeight: 'auto' }}>
-          <div className="landing-row" style={{ marginBottom: 16 }}>
-            <span>GOOGL Price</span>
-            <strong>
-              ${safePrice.toFixed(2)}
-              {isLive && <span style={{ color: 'var(--green-landing)', fontSize: 11, marginLeft: 6 }}>● LIVE</span>}
-            </strong>
-          </div>
-
-          <div style={{ marginBottom: 28 }}>
-            <small style={{ color: 'var(--muted2-landing)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5, fontWeight: 700 }}>Price</small>
-            <div style={{ fontSize: 36, fontWeight: 700, marginTop: 4, letterSpacing: '-.03em' }}>{contractMintPrice} ETH</div>
-            <div style={{ fontSize: 14, color: 'var(--muted-landing)', marginTop: 4 }}>≈ ${actualDollar.toFixed(2)} USD</div>
-          </div>
-
-          <div style={{ borderTop: '1px solid rgba(255,255,255,.09)', borderBottom: '1px solid rgba(255,255,255,.09)', padding: '20px 0', marginBottom: 24 }}>
-            <small style={{ color: 'var(--muted2-landing)', textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5, fontWeight: 700, marginBottom: 12, display: 'block' }}>You Pay</small>
-            <div className="landing-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
-              <span>NFT Price</span><strong>{contractMintPrice} ETH</strong>
-            </div>
-            <div className="landing-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
-              <span>Network Fee (est.)</span><strong style={{ color: 'var(--muted2-landing)' }}>~0.001 ETH</strong>
-            </div>
-            <div className="landing-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
-              <span>You Receive</span><strong style={{ color: 'var(--gold)' }}>~{shares} GOOGLon</strong>
-            </div>
-          </div>
-
-          {isConnected && (
-            <div className="landing-row" style={{ marginBottom: 20, padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,.04)', borderBottom: 'none' }}>
-              <span>Your ETH Balance</span>
-              <strong style={{ color: Number(ethBalance) < mintPriceNum ? 'var(--red-landing)' : 'var(--green-landing)' }}>{Number(ethBalance).toFixed(4)} ETH</strong>
-            </div>
-          )}
-
-          <button onClick={mint} disabled={minting || !mintActive} className="landing-btn" style={{ width: '100%', padding: 16, fontSize: 16, marginBottom: 12 }}>
-            {minting ? '⏳ Minting...' : !isConnected ? 'Connect Wallet' : 'MINT'}
-          </button>
-
-          {isConnected && Number(ethBalance) < mintPriceNum && (
-            <div style={{ marginTop: 12, padding: 10, background: 'rgba(255,142,155,.08)', borderRadius: 12, textAlign: 'center' }}>
-              <span style={{ fontSize: 13, color: 'var(--red-landing)' }}>⚠️ You need at least {contractMintPrice} ETH to mint. Please fund your wallet.</span>
-            </div>
-          )}
-
-          {txHash && (
-            <p style={{ marginTop: 16, fontSize: 12, textAlign: 'center' }}>
-              <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" style={{ color: 'var(--gold)' }}>View on Etherscan ↗</a>
-            </p>
-          )}
-        </div>
-
-        {/* Right: Certificate Preview */}
-        <div className="landing-card mint-cert" style={{
-          padding: 32,
-          minHeight: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          perspective: '800px',
-          overflow: 'hidden',
-        }}>
-          <div
-            style={{
-              transformStyle: 'preserve-3d',
-              transition: 'transform 0.15s ease-out',
-              cursor: 'default',
-              marginBottom: 16,
-            }}
-            onMouseMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const y = e.clientY - rect.top;
-              const rotX = ((y / rect.height) - 0.5) * 14;
-              const rotY = ((x / rect.width) - 0.5) * -14;
-              e.currentTarget.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'rotateX(0deg) rotateY(0deg)';
-            }}
+      {/* Phase banner */}
+      <div className="mb-6 p-4 rounded-lg bg-gray-800 border border-gray-700">
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Phase:</span>
+          <span
+            className={`font-semibold ${
+              phaseNum === MINT_PHASE.WHITELIST
+                ? "text-yellow-400"
+                : phaseNum === MINT_PHASE.PUBLIC
+                ? "text-green-400"
+                : phaseNum === MINT_PHASE.ENDED
+                ? "text-red-400"
+                : "text-gray-500"
+            }`}
           >
-            <CertificateSVG
-              tokenId="—"
-              owner={address ? `${address.slice(0,6)}...${address.slice(-4)}` : '0x...'}
-              shares={shares}
-              valueUSDC="10"
-              issueDate={new Date().toISOString().split('T')[0]}
-              network="Ethereum Mainnet"
-              googlPrice={safePrice.toFixed(2)}
-              width={400}
-              height={566}
-            />
+            {getPhaseLabel(phaseNum)}
+          </span>
+        </div>
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-gray-400">Price:</span>
+          <span className="font-semibold text-white">
+            {pricePer} USDG
+          </span>
+        </div>
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-gray-400">Minted:</span>
+          <span className="font-semibold text-white">
+            {totalSupply?.toString() ?? "0"} NFTs
+          </span>
+        </div>
+        {isWhitelisted && phaseNum === MINT_PHASE.WHITELIST && (
+          <div className="mt-2 text-center text-yellow-400 text-sm font-semibold">
+            ✅ You are whitelisted
           </div>
-          <p style={{ color: 'var(--muted-landing)', fontSize: 12, maxWidth: 400, textAlign: 'center', margin: 0 }}>
-            Your NFT will be stored permanently on Arweave via IRYS on mint
+        )}
+      </div>
+
+      {/* Mint controls */}
+      {phaseNum === MINT_PHASE.WHITELIST || phaseNum === MINT_PHASE.PUBLIC ? (
+        <>
+          {/* Quantity selector */}
+          <div className="mb-4">
+            <label className="block text-sm text-gray-400 mb-1">Quantity</label>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setMintCount(Math.max(1, mintCount - 1))}
+                className="px-3 py-2 bg-gray-700 rounded hover:bg-gray-600"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={mintCount}
+                onChange={(e) =>
+                  setMintCount(Math.max(1, Math.min(10, Number(e.target.value) || 1)))
+                }
+                className="w-20 text-center py-2 bg-gray-800 border border-gray-600 rounded text-white"
+              />
+              <button
+                onClick={() => setMintCount(Math.min(10, mintCount + 1))}
+                className="px-3 py-2 bg-gray-700 rounded hover:bg-gray-600"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Total */}
+          <div className="mb-6 p-4 rounded-lg bg-gray-800 border border-gray-700">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Total:</span>
+              <span className="font-bold text-white text-lg">
+                {totalUSDG} USDG
+              </span>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-gray-400">Your USDG:</span>
+              <span className="text-gray-300">
+                {usdgBalance ? formatUnits(usdgBalance.value, TOKEN_DECIMALS.USDG) : "0"}
+              </span>
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-col gap-3">
+            {needApproval ? (
+              <button
+                onClick={handleApprove}
+                disabled={approvePending || approveConfirming}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg font-semibold text-white transition"
+              >
+                {approvePending || approveConfirming
+                  ? "Approving USDG..."
+                  : `Approve ${totalUSDG} USDG`}
+              </button>
+            ) : (
+              <button
+                onClick={handleMint}
+                disabled={mintPending || mintConfirming || (phaseNum as number) === MINT_PHASE.ENDED}
+                className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg font-semibold text-white transition"
+              >
+                {mintPending || mintConfirming
+                  ? "Minting..."
+                  : `Mint ${mintCount} NFT${mintCount > 1 ? "s" : ""}`}
+              </button>
+            )}
+          </div>
+
+          {/* Faucet (testnet) */}
+          <div className="mt-6 p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+            <p className="text-sm text-gray-400 mb-2">
+              Need testnet USDG? Get 1,000 from the faucet.
+            </p>
+            <button
+              onClick={faucet}
+              disabled={faucetLoading}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-lg text-sm font-semibold transition"
+            >
+              {faucetLoading ? "Sending..." : "Get Testnet USDG"}
+            </button>
+            {faucetMsg && (
+              <p className="mt-2 text-xs text-gray-300">{faucetMsg}</p>
+            )}
+          </div>
+
+          {/* Status messages */}
+          {approveSuccess && (
+            <div className="p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-300 text-sm">
+              ✅ USDG approved! You can now mint.
+            </div>
+          )}
+          {mintSuccess && (
+            <div className="p-3 bg-green-900/30 border border-green-700 rounded text-green-300 text-sm">
+              🎉 NFT{ mintCount > 1 ? "s" : "" } minted successfully! Check your portfolio.
+            </div>
+          )}
+        </>
+      ) : phaseNum === MINT_PHASE.ENDED ? (
+        <div className="text-center py-8">
+          <p className="text-xl text-gray-400">Mint has ended</p>
+          <p className="text-sm text-gray-500 mt-2">
+            {totalSupply?.toString() ?? "0"} NFTs minted total
           </p>
         </div>
-      </div>
-
-      {/* Economics Section */}
-      <div className="landing-section" style={{ paddingTop: 0 }}>
-        <EconomicsSlideshow shares={shares} safePrice={safePrice} />
-      </div>
-
-      <style jsx>{`
-        .mint-cert svg {
-          max-width: 100%;
-          height: auto;
-        }
-        @media (max-width: 768px) {
-          .mint-grid {
-            grid-template-columns: 1fr !important;
-          }
-          .mint-cert svg {
-            width: 300px !important;
-            height: auto !important;
-          }
-        }
-        @media (max-width: 480px) {
-          .mint-grid {
-            grid-template-columns: 1fr !important;
-          }
-          .mint-cert svg {
-            width: 260px !important;
-          }
-        }
-      `}</style>
-      </div>
-    </div>
-  );
-}
-
-function EconomicsSlideshow({ shares, safePrice }: { shares: string; safePrice: number }) {
-  const steps = [
-    { v: '$10', l: 'Fixed Mint Price', sub: 'Pay the same amount every time' },
-    { v: '3.5% APY', l: 'Stablecoin Yield', sub: 'Earned on top of your shares' },
-    { v: `~${shares}`, l: 'Google Shares', sub: `At $${safePrice.toFixed(0)}/share` },
-  ];
-  const [idx, setIdx] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => setIdx((i) => (i + 1) % steps.length), 4000);
-    return () => clearInterval(timer);
-  }, [steps.length]);
-
-  const s = steps[idx];
-
-  return (
-    <>
-      <div style={{
-        maxWidth: 700, margin: '0 auto',
-        padding: '48px 40px',
-        borderRadius: 34,
-        background: 'linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.045))',
-        border: '1px solid rgba(255,255,255,.12)',
-        boxShadow: '0 16px 55px rgba(0,0,0,.22)',
-        minHeight: 180,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <div key={idx} style={{ animation: 'fadeSlideIn 0.5s ease-out', textAlign: 'center' }}>
-          <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-1px', color: 'var(--gold)', marginBottom: 8 }}>{s.v}</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 6 }}>{s.l}</div>
-          <div style={{ fontSize: 13, color: 'var(--muted-landing)' }}>{s.sub}</div>
+      ) : (
+        <div className="text-center py-8">
+          <p className="text-xl text-gray-400">Mint not yet started</p>
+          <p className="text-sm text-gray-500 mt-2">Check back soon</p>
         </div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
-        {steps.map((_, i) => (
-          <div key={i} style={{
-            width: i === idx ? 24 : 8, height: 8, borderRadius: 200,
-            background: i === idx ? 'var(--gold)' : 'rgba(255,255,255,.15)',
-            transition: 'all 0.4s ease',
-          }} />
-        ))}
-      </div>
-      <style jsx>{`
-        @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
-    </>
+      )}
+    </div>
   );
 }

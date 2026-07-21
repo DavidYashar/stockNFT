@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { ADDRESSES } from "@/lib/contracts";
 import Link from "next/link";
 
 function WalletButton() {
@@ -41,8 +41,8 @@ export function AppHeader() {
   const { address } = useAccount();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const deployerAddr = CONTRACT_ADDRESSES.deployerAddress?.toLowerCase();
-  const treasuryAddr = (CONTRACT_ADDRESSES.treasuryVaultAddress || CONTRACT_ADDRESSES.treasuryEOA)?.toLowerCase();
+  const deployerAddr = ADDRESSES.treasury?.toLowerCase();
+  const treasuryAddr = ADDRESSES.treasury?.toLowerCase();
   const userAddr = address?.toLowerCase();
 
   const showAdmin = !!(userAddr && (userAddr === deployerAddr || userAddr === treasuryAddr));

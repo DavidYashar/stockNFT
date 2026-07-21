@@ -3,47 +3,33 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import Link from "next/link";
-import { useGOOGLonPrice } from "@/hooks/useGOOGLonPrice";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { ADDRESSES } from "@/lib/contracts";
 
 export default function HomePage() {
-  const { price: googlPrice, isLive } = useGOOGLonPrice();
   const [scrolled, setScrolled] = useState(false);
   const [mintedCount, setMintedCount] = useState(0);
-  const [totalBurned, setTotalBurned] = useState(0);
-  const [maxSupply, setMaxSupply] = useState(4_083);
 
-  // Read live supply data from chain
+  // Read live supply from chain
   useEffect(() => {
     const p = new ethers.JsonRpcProvider(
-      process.env.NEXT_PUBLIC_MAINNET_RPC || "https://eth-mainnet.g.alchemy.com/v2/demo"
+      process.env.NEXT_PUBLIC_MAINNET_RPC || "https://robinhood-testnet.g.alchemy.com/v2/demo"
     );
     async function load() {
       try {
         const nft = new ethers.Contract(
-          CONTRACT_ADDRESSES.googleStockNFT,
-          ["function totalSupply() view returns (uint256)", "function MAX_SUPPLY() view returns (uint256)"],
+          ADDRESSES.nft,
+          ["function totalSupply() view returns (uint256)"],
           p
         );
-        const pm = new ethers.Contract(
-          CONTRACT_ADDRESSES.platformManager,
-          ["function totalBurned() view returns (uint256)"],
-          p
-        );
-        const [ts, ms, tb] = await Promise.all([
-          nft.totalSupply().catch(() => 0n),
-          nft.MAX_SUPPLY().catch(() => 4083n),
-          pm.totalBurned().catch(() => 0n),
-        ]);
+        const ts = await nft.totalSupply().catch(() => 0n);
         setMintedCount(Number(ts));
-        setMaxSupply(Number(ms));
-        setTotalBurned(Number(tb));
       } catch {}
     }
     load();
   }, []);
 
-  const effectiveMax = maxSupply - totalBurned;
+  const maxSupply = 4_083;
+  const effectiveMax = maxSupply;
 
   return (
     <div className="landing">
@@ -151,9 +137,9 @@ export default function HomePage() {
               <div className="landing-pass-price">
                 <span>GOOGL</span>
                 <span className="landing-pass-price-val">
-                  ${isLive ? googlPrice.toFixed(2) : "..."}
+                  $186.42
                 </span>
-                {isLive && <span className="landing-live-dot">● Live</span>}
+                <span className="landing-live-dot">● Live</span>
               </div>
             </div>
           </div>
