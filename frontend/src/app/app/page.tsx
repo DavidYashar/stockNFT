@@ -440,11 +440,37 @@ export default function AppPage() {
 
   // ── Admin detection — env-only, no on-chain needed ──
   useEffect(() => {
-    if (!mounted || !address) { setIsAdmin(false); return; }
-    const treasuryVal = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").toLowerCase();
-    const deployerVal = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").toLowerCase();
+    if (!mounted) { console.log("[admin] not mounted yet"); return; }
+    if (!address) { console.log("[admin] no address, clearing"); setIsAdmin(false); return; }
+    const treasuryVal = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").trim().toLowerCase();
+    const deployerVal = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").trim().toLowerCase();
     const addrLower = address.toLowerCase();
-    setIsAdmin(addrLower === treasuryVal || addrLower === deployerVal);
+    const match = addrLower === treasuryVal || addrLower === deployerVal;
+    console.log("[admin] check:", {
+      address: addrLower,
+      treasury: treasuryVal || "(empty)",
+      deployer: deployerVal || "(empty)",
+      match,
+    });
+    setIsAdmin(match);
+  }, [address, mounted]);
+
+  // ── Admin fallback — on-chain owner check (independent of tier detection) ──
+  useEffect(() => {
+    if (!mounted || !address) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const ownerVal: string = await pmContract.current.owner();
+        if (!cancelled && ownerVal && address.toLowerCase() === ownerVal.toLowerCase()) {
+          console.log("[admin] on-chain owner match:", ownerVal);
+          setIsAdmin(true);
+        }
+      } catch (e) {
+        console.log("[admin] on-chain owner check failed (expected if contracts not deployed):", (e as Error).message);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [address, mounted]);
 
   // ── Tier detection — reads PlatformManager + GoogleStockNFT directly via RPC ──
