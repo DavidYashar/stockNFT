@@ -450,10 +450,14 @@ export default function AppPage() {
         const ownerVal = await pmContract.current.owner();
 
         if (!cancelled && address) {
-          const treasuryVal = process.env.NEXT_PUBLIC_TREASURY_EOA || "0x982698483F08F99b9354878fFFf5A600b63f5145";
+          const treasuryVal = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").toLowerCase();
+          const deployerVal = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").toLowerCase();
+          const ownerLower = (ownerVal || "").toLowerCase();
+          const addrLower = address.toLowerCase();
           setIsAdmin(
-            address.toLowerCase() === ownerVal.toLowerCase() ||
-            address.toLowerCase() === treasuryVal.toLowerCase()
+            addrLower === ownerLower ||
+            addrLower === treasuryVal ||
+            addrLower === deployerVal
           );
         }
 
