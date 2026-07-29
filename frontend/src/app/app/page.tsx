@@ -443,19 +443,11 @@ export default function AppPage() {
 
   // ── Admin detection — env-only, no on-chain needed ──
   useEffect(() => {
-    if (!mounted) { console.log("[admin] not mounted yet"); return; }
-    if (!address) { console.log("[admin] no address, clearing"); setIsAdmin(false); return; }
+    if (!mounted || !address) { setIsAdmin(false); return; }
     const treasuryVal = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").trim().toLowerCase();
     const deployerVal = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").trim().toLowerCase();
     const addrLower = address.toLowerCase();
-    const match = addrLower === treasuryVal || addrLower === deployerVal;
-    console.log("[admin] check:", {
-      address: addrLower,
-      treasury: treasuryVal || "(empty)",
-      deployer: deployerVal || "(empty)",
-      match,
-    });
-    setIsAdmin(match);
+    setIsAdmin(addrLower === treasuryVal || addrLower === deployerVal);
   }, [address, mounted]);
 
   // ── Admin fallback — on-chain owner check (independent of tier detection) ──
@@ -466,11 +458,10 @@ export default function AppPage() {
       try {
         const ownerVal: string = await pmContract.current.owner();
         if (!cancelled && ownerVal && address.toLowerCase() === ownerVal.toLowerCase()) {
-          console.log("[admin] on-chain owner match:", ownerVal);
           setIsAdmin(true);
         }
-      } catch (e) {
-        console.log("[admin] on-chain owner check failed (expected if contracts not deployed):", (e as Error).message);
+      } catch (_e) {
+        // expected if contracts not deployed on this network
       }
     })();
     return () => { cancelled = true; };
@@ -1183,9 +1174,9 @@ export default function AppPage() {
                     <p style={{margin:"2px 0"}}>3. Comment on <a href={`https://x.com/naiivememe/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
                     <p style={{margin:"2px 0"}}>4. Post this exact tweet:</p>
                     <code style={{display:"block",padding:"6px 10px",background:"rgba(0,0,0,0.3)",borderRadius:4,fontSize:12,margin:"4px 0"}}>
-                      yes I am just testing if @naiivememe follows back or not.
+                      Just secured my WL with @StocksNFT_ on Robinhood. Officially joining the true stock NFT movement.
                     </code>
-                    <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent("yes I am just testing if @naiivememe follows back or not.")}`} target="_blank" rel="noopener noreferrer"
+                    <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent("Just secured my WL with @StocksNFT_ on Robinhood. Officially joining the true stock NFT movement.")}`} target="_blank" rel="noopener noreferrer"
                       style={{display:"inline-block",marginTop:6,color:"var(--color-primary)",fontWeight:600,fontSize:12}}>
                       ↗ Click to tweet this
                     </a>
