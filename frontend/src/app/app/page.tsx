@@ -1170,8 +1170,8 @@ export default function AppPage() {
                   <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"12px 16px",marginBottom:16,fontSize:13,color:"var(--text-secondary)",lineHeight:1.8}}>
                     <p style={{margin:"0 0 8px 0",fontWeight:600,color:"var(--text-primary)"}}>📋 Steps:</p>
                     <p style={{margin:"2px 0"}}>1. Follow <a href={`https://x.com/${wlFollowAccount}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>@{wlFollowAccount}</a></p>
-                    <p style={{margin:"2px 0"}}>2. Like &amp; Retweet <a href={`https://x.com/naiivememe/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
-                    <p style={{margin:"2px 0"}}>3. Comment on <a href={`https://x.com/naiivememe/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
+                    <p style={{margin:"2px 0"}}>2. Like &amp; Retweet <a href={`https://x.com/${wlFollowAccount}/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
+                    <p style={{margin:"2px 0"}}>3. Comment on <a href={`https://x.com/${wlFollowAccount}/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
                     <p style={{margin:"2px 0"}}>4. Post this exact tweet:</p>
                     <code style={{display:"block",padding:"6px 10px",background:"rgba(0,0,0,0.3)",borderRadius:4,fontSize:12,margin:"4px 0"}}>
                       Just secured my WL with @StocksNFT_ on Robinhood. Officially joining the true stock NFT movement.
