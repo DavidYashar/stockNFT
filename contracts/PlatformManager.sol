@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
-interface IGoogleStockNFT {
+interface IGoogleStockNFT_V2 {
     function stopMint() external;
     function resumeMint() external;
     function burnUnminted(uint256 amount) external;
@@ -12,179 +12,171 @@ interface IGoogleStockNFT {
 }
 
 /**
- * @title PlatformManager
- * @notice Central admin + accounting contract. All ETH is held by a Treasury EOA.
- *         This contract tracks: pool80/20 split, DeFi position, loyalty fees,
- *         trigger conditions, mint lifecycle, and fee parameters.
+ * @title PlatformManager V2
+ * @notice Central admin + accounting for StockNFT V2 on Robinhood Chain.
+ *
+ *         Payments in USDG. Tracks: phase state, 80/20 pools, loyalty fees.
+ *         DeFi (Aave, sweep, harvest) REMOVED from V2.
+ *         GooglonSwapAdapter REMOVED — StockVault swaps directly.
+ *
+ *         Access control:
+ *           - Deployer (owner): set addresses, manage phases, pause, fees
+ *           - Treasury EOA: trigger Google purchase, receive loyalty
+ *           - GoogleStockNFT: record mint
  */
 contract PlatformManager is Ownable, Pausable {
     error MintNotEnded();
-    error InsufficientLoyalty(uint256 required, uint256 available);
     error TriggerAlreadyFired();
-    error SweepTooEarly(uint256 nextAvailable);
+    error NotAuthorized();
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    uint256 public constant GAP_PERCENT = 2_000;
-    uint256 public constant POOL80_BPS = 8_000;
-    uint256 public constant POOL20_BPS = 2_000;
 
-    // === Mint & Loyalty ===
+    // Phase
+    enum Phase { NONE, WHITELIST, PUBLIC, ENDED }
+    Phase public mintPhase = Phase.NONE;
+
+    // Mint & loyalty
     uint256 public totalMintPrincipal;
     uint256 public totalLoyaltyFees;
-    bool public triggerFired;
     bool public mintEnded;
     uint256 public totalBurned;
 
-    // === Treasury Accounting ===
-    uint256 public pool80;
-    uint256 public pool20;
-    uint256 public totalDeFiPrincipal;
-    uint48 public lastSweepTimestamp;
-    uint48 public lastHarvestTimestamp;
-    uint256 public sweepInterval = 4 hours;
-
-    // === External Addresses ===
+    // External addresses
     address public googleStockNFT;
-    address public stockVault;
-    address public sweepOperator; // Treasury vault for DeFi operations
+    address public treasuryVault;
+    address public treasuryEOA;
 
-    // === Configurable ===
+    // ERC-6551
+    address public erc6551Registry;
+    address public erc6551Implementation;
+
+    // Config
     uint96 public royaltyBps = 1_000;
     uint96 public redemptionFeeBps = 500;
-    uint96 public interestRateBps = 390;
 
-    // === Events ===
-    event MintRecorded(uint256 amount, uint256 toPool80, uint256 toPool20);
+    // Events
+    event MintRecorded(uint256 amount);
     event LoyaltyReceived(uint256 amount, uint256 total);
-    event SweepRecorded(uint256 amount, uint256 timestamp);
-    event HarvestRecorded(uint256 yield, uint256 timestamp);
-    event TriggerExecuted(uint256 totalETH, uint256 googlon, uint256 timestamp);
+    event PhaseChanged(Phase oldPhase, Phase newPhase);
     event MintEnded(uint256 burned, uint256 principal);
-    event FeesUpdated(uint96 royalty, uint96 redemption, uint96 interest);
+    event FeesUpdated(uint96 royalty, uint96 redemption);
 
-    constructor(address _initialOwner) Ownable(_initialOwner) {}
+    constructor(address _owner, address _treasury) Ownable(_owner) {
+        treasuryEOA = _treasury;
+    }
 
-    // === Setup ===
+    // ─── Setup ───
     function setGoogleStockNFT(address _a) external onlyOwner {
-        require(googleStockNFT == address(0), "Already set"); googleStockNFT = _a;
+        require(googleStockNFT == address(0), "Already set");
+        require(_a != address(0), "Zero");
+        googleStockNFT = _a;
     }
     function updateGoogleStockNFT(address _a) external onlyOwner {
         require(_a != address(0), "Zero"); googleStockNFT = _a;
     }
-    function setStockVault(address _a) external onlyOwner {
-        require(stockVault == address(0), "Already set"); stockVault = _a;
+    function setTreasuryVault(address _a) external onlyOwner {
+        require(treasuryVault == address(0), "Already set");
+        require(_a != address(0), "Zero");
+        treasuryVault = _a;
     }
-    function updateStockVault(address _a) external onlyOwner {
-        require(_a != address(0), "Zero"); stockVault = _a;
+    function updateTreasuryVault(address _a) external onlyOwner {
+        require(_a != address(0), "Zero"); treasuryVault = _a;
     }
-    function setSweepInterval(uint256 _i) external onlyOwner {
-        require(_i > 0, "Zero"); sweepInterval = _i;
-    }
-    function setSweepOperator(address _a) external onlyOwner {
-        require(_a != address(0), "Zero"); sweepOperator = _a;
+    function updateTreasury(address _a) external onlyOwner {
+        require(_a != address(0), "Zero"); treasuryEOA = _a;
     }
 
-    modifier onlySweepOrOwner() {
-        require(msg.sender == owner() || msg.sender == sweepOperator, "Not authorized");
+    /// @notice Set ERC-6551 registry + implementation (one-time). Also propagates to NFT.
+    function setERC6551(address _registry, address _impl) external onlyOwner {
+        require(erc6551Registry == address(0), "Already set");
+        require(_registry != address(0) && _impl != address(0), "Zero");
+        erc6551Registry = _registry;
+        erc6551Implementation = _impl;
+        // Propagate to GoogleStockNFT
+        (bool ok, ) = googleStockNFT.call(
+            abi.encodeWithSignature("setERC6551(address,address)", _registry, _impl)
+        );
+        require(ok, "NFT setERC6551 failed");
+    }
+
+    /// @notice Update only the TBA implementation address (for upgrades).
+    function updateERC6551Implementation(address _impl) external onlyOwner {
+        require(_impl != address(0), "Zero");
+        erc6551Implementation = _impl;
+        (bool ok, ) = googleStockNFT.call(
+            abi.encodeWithSignature("updateERC6551Implementation(address)", _impl)
+        );
+        require(ok, "NFT update failed");
+    }
+
+    // ─── Phase ───
+    function openWhitelist() external onlyTreasuryOrOwner whenNotPaused {
+        require(mintPhase == Phase.NONE);
+        mintPhase = Phase.WHITELIST;
+        // Notify NFT contract to start WL timer
+        (bool ok, ) = googleStockNFT.call(
+            abi.encodeWithSignature("notifyWhitelistStart()")
+        );
+        require(ok, "NFT notify failed");
+        emit PhaseChanged(Phase.NONE, Phase.WHITELIST);
+    }
+    function openPublic() external onlyTreasuryOrOwner whenNotPaused {
+        require(mintPhase == Phase.WHITELIST);
+        mintPhase = Phase.PUBLIC;
+        emit PhaseChanged(Phase.WHITELIST, Phase.PUBLIC);
+    }
+    function endMint() external onlyTreasuryOrOwner whenNotPaused {
+        require(!mintEnded);
+        mintEnded = true;
+        Phase prev = mintPhase;
+        mintPhase = Phase.ENDED;
+        IGoogleStockNFT_V2(googleStockNFT).stopMint();
+        emit PhaseChanged(prev, Phase.ENDED);
+        emit MintEnded(0, totalMintPrincipal);
+    }
+
+    modifier onlyTreasuryOrOwner() {
+        require(msg.sender == owner() || msg.sender == treasuryEOA, "Not authorized");
         _;
     }
 
-    // === Mint (called by NFT) ===
-    function recordMint(uint256 amount) external {
+    // ─── Mint Record (called by NFT only) ───
+    /// @notice V3: TreasuryVault handles 80/20 split internally. PM only tracks total.
+    function recordMint(uint256 amount) external whenNotPaused {
         require(msg.sender == googleStockNFT, "Not NFT");
-        uint256 to80 = (amount * POOL80_BPS) / BPS_DENOMINATOR;
-        uint256 to20 = amount - to80;
-        pool80 += to80; pool20 += to20;
         totalMintPrincipal += amount;
-        emit MintRecorded(amount, to80, to20);
+        emit MintRecorded(amount);
     }
 
-    // === Loyalty (called by NFT, owner, sweepOperator, or marketplace) ===
-    function receiveLoyalty(uint256 amount) external {
-        require(msg.sender == googleStockNFT || msg.sender == owner() || msg.sender == sweepOperator, "Auth");
+    // ─── Loyalty ───
+    function receiveLoyalty(uint256 amount) external whenNotPaused {
+        require(msg.sender == googleStockNFT || msg.sender == owner() || msg.sender == treasuryEOA, "Auth");
         totalLoyaltyFees += amount;
         emit LoyaltyReceived(amount, totalLoyaltyFees);
     }
 
-    // === DeFi Sweep (called by sweepOperator or owner) ===
-    function recordSweep(uint256 amount) external onlySweepOrOwner {
-        uint256 next = uint256(lastSweepTimestamp) + sweepInterval;
-        if (block.timestamp < next) revert SweepTooEarly(next);
-        require(amount > 0 && amount <= pool20, "Bad amount");
-        pool20 -= amount;
-        totalDeFiPrincipal += amount;
-        lastSweepTimestamp = uint48(block.timestamp);
-        if (lastHarvestTimestamp == 0) lastHarvestTimestamp = uint48(block.timestamp);
-        emit SweepRecorded(amount, block.timestamp);
-    }
-
-    // === DeFi Harvest (called by sweepOperator or owner) ===
-    function recordHarvest(uint256 yieldAmount) external onlySweepOrOwner {
-        require(yieldAmount > 0, "Zero");
-        lastHarvestTimestamp = uint48(block.timestamp);
-        emit HarvestRecorded(yieldAmount, block.timestamp);
-    }
-
-    // === Mint Lifecycle ===
-    function pauseMint() external onlyOwner {
-        IGoogleStockNFT(googleStockNFT).stopMint();
-    }
-    function resumeMint() external onlyOwner {
-        IGoogleStockNFT(googleStockNFT).resumeMint();
-    }
-    function setTotalBurned(uint256 v) external onlyOwner {
-        require(totalBurned == 0, "Set"); totalBurned = v;
-    }
-    function setTotalMintPrincipal(uint256 v) external onlyOwner {
-        require(v > totalMintPrincipal, "Low"); totalMintPrincipal = v;
-    }
-    function pauseAndBurn(uint256 n) external onlyOwner {
-        require(!mintEnded, "Ended");
-        IGoogleStockNFT(googleStockNFT).stopMint();
-        IGoogleStockNFT(googleStockNFT).burnUnminted(n);
-        totalBurned += n;
-        emit MintEnded(n, totalMintPrincipal);
-    }
-    function stopMintAndBurn(uint256 n) external onlyOwner {
-        require(!mintEnded, "Ended");
+    // ─── Lifecycle ───
+    function pauseMint() external onlyOwner { IGoogleStockNFT_V2(googleStockNFT).stopMint(); }
+    function resumeMint() external onlyOwner { IGoogleStockNFT_V2(googleStockNFT).resumeMint(); }
+    function setTotalBurned(uint256 v) external onlyOwner { require(totalBurned == 0); totalBurned = v; }
+    function setTotalMintPrincipal(uint256 v) external onlyOwner { require(v > totalMintPrincipal); totalMintPrincipal = v; }
+    function stopMintAndBurn(uint256 n) external onlyOwner whenNotPaused {
+        require(!mintEnded);
         mintEnded = true;
-        IGoogleStockNFT(googleStockNFT).stopMint();
-        IGoogleStockNFT(googleStockNFT).burnUnminted(n);
+        Phase prev = mintPhase;
+        mintPhase = Phase.ENDED;
+        IGoogleStockNFT_V2(googleStockNFT).stopMint();
+        IGoogleStockNFT_V2(googleStockNFT).burnUnminted(n);
         totalBurned += n;
+        emit PhaseChanged(prev, Phase.ENDED);
         emit MintEnded(n, totalMintPrincipal);
     }
-    function markMintEnded() external onlyOwner {
-        require(!mintEnded, "Ended"); mintEnded = true;
-        emit MintEnded(0, totalMintPrincipal);
-    }
 
-    // === Trigger ===
-    function gap20() public view returns (uint256) {
-        return (totalMintPrincipal * GAP_PERCENT) / BPS_DENOMINATOR;
-    }
-    function canTrigger() public view returns (bool) {
-        return mintEnded && !triggerFired && totalLoyaltyFees >= gap20();
-    }
-
-    function triggerGooglePurchase(uint256 minGooglonOut) external onlySweepOrOwner whenNotPaused {
-        if (!mintEnded) revert MintNotEnded();
-        if (triggerFired) revert TriggerAlreadyFired();
-        uint256 gap = gap20();
-        if (totalLoyaltyFees < gap) revert InsufficientLoyalty(gap, totalLoyaltyFees);
-        triggerFired = true;
-        require(stockVault != address(0), "No SV");
-        (bool ok, bytes memory data) = stockVault.call(
-            abi.encodeWithSignature("executeGooglePurchase(uint256,uint256)", totalMintPrincipal, minGooglonOut)
-        );
-        require(ok, "Swap failed");
-        emit TriggerExecuted(totalMintPrincipal, abi.decode(data, (uint256)), block.timestamp);
-    }
-
-    // === Admin ===
-    function updateFees(uint96 _r, uint96 _red, uint96 _int) external onlyOwner {
+    // ─── Admin ───
+    function updateFees(uint96 _r, uint96 _red) external onlyOwner {
         require(_r <= 5_000 && _red <= 2_000, "High");
-        royaltyBps = _r; redemptionFeeBps = _red; interestRateBps = _int;
-        emit FeesUpdated(_r, _red, _int);
+        royaltyBps = _r; redemptionFeeBps = _red;
+        emit FeesUpdated(_r, _red);
     }
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }

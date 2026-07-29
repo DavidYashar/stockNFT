@@ -1,11 +1,10 @@
 import { ethers } from "ethers";
 import { config } from "./config";
 
-// GoogleStockNFT ABI (for IRYS event listening)
+// GoogleStockNFT ABI (for on-chain queries)
 const GOOGLE_STOCK_NFT_ABI = [
   "event NFTMinted(uint256 indexed tokenId, address indexed owner, uint256 ethAmount, uint256 googlPrice)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
-  "function setIrysTxId(uint256,string) external",
   "function mintPrincipal(uint256) view returns (uint256)",
   "function googlPriceAtMint(uint256) view returns (uint256)",
   "function tokenURI(uint256) view returns (string)",

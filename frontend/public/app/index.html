@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="description" content="stockNFT DAPP — Mint, trade, and redeem tokenized stocks on Robinhood Chain.">
+  <title>stockNFT DAPP · Tokenized Stocks</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Round" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/app/styles/app.css">
+
+  <!-- Three.js + Ethers Import Map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "ethers": "https://esm.sh/ethers@6"
+    }
+  }
+  </script>
+</head>
+<body class="dark">
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- ========== Left Sidebar ========== -->
+    <aside class="app-sidebar" id="sidebar" role="navigation" aria-label="App navigation">
+      <div class="sidebar-header">
+        <a href="/" class="sidebar-logo-link" aria-label="Back to home">
+          <img src="/logo.jpg" alt="stockNFT" class="sidebar-logo">
+        </a>
+        <span class="sidebar-brand">stockNFT</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="sidebar-tab active" data-tab="mint" aria-label="Mint stocks">
+          <span class="material-icons-round">add_circle</span>
+          <span class="tab-label">Mint</span>
+          <span class="tab-badge">New</span>
+        </button>
+        <button class="sidebar-tab" data-tab="portfolio" aria-label="Your portfolio">
+          <span class="material-icons-round">account_balance_wallet</span>
+          <span class="tab-label">Portfolio</span>
+        </button>
+        <button class="sidebar-tab" data-tab="redeem" aria-label="Redeem stocks">
+          <span class="material-icons-round">swap_horiz</span>
+          <span class="tab-label">Redeem</span>
+        </button>
+        <button class="sidebar-tab" data-tab="admin" aria-label="Admin panel">
+          <span class="material-icons-round">admin_panel_settings</span>
+          <span class="tab-label">Admin</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-wallet">
+          <button class="btn-wallet-connect" id="btn-wallet-connect">
+            <span class="material-icons-round">account_balance_wallet</span>
+            <span>Connect Wallet</span>
+          </button>
+          <div class="wallet-selector" id="wallet-selector" style="display:none;">
+            <button class="wallet-option" data-wallet="metamask">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" style="width:20px;height:20px;">
+              <span>MetaMask</span>
+            </button>
+            <button class="wallet-option" data-wallet="okx">
+              <img src="https://www.okx.com/cdn/assets/imgs/221/5F7E5F0E1F7A5B1E.png" alt="OKX" style="width:20px;height:20px;">
+              <span>OKX Wallet</span>
+            </button>
+          </div>
+          <div class="wallet-info" id="wallet-info" style="display:none;">
+            <span class="wallet-dot"></span>
+            <span class="wallet-address" id="wallet-address"></span>
+          </div>
+        </div>
+        <a href="/" class="sidebar-back">
+          <span class="material-icons-round">arrow_back</span>
+          <span>Back to Home</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Mobile header (only visible on small screens) -->
+    <header class="app-mobile-header" id="mobile-header">
+      <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
+        <span class="material-icons-round">menu</span>
+      </button>
+      <span class="mobile-title" id="mobile-title">Mint</span>
+      <button class="mobile-wallet-btn" id="mobile-wallet-btn" aria-label="Connect wallet">
+        <span class="material-icons-round">account_balance_wallet</span>
+      </button>
+    </header>
+
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- ========== Main Content Area ========== -->
+    <main class="app-content">
+
+      <!-- ---- Mint Page ---- -->
+      <section class="app-page active" id="page-mint" aria-labelledby="tab-mint">
+        <div class="mint-layout">
+
+          <!-- Left Column: Price & Mint Info -->
+          <div class="mint-info">
+            <div class="mint-stock-header">
+              <div class="stock-symbol-badge">GOOGL</div>
+              <div>
+                <h1 class="stock-name">Google Inc.</h1>
+                <p class="stock-exchange">NASDAQ · Robinhood Chain</p>
+              </div>
+            </div>
+
+            <!-- Current Share Price -->
+            <div class="mint-price-card">
+              <span class="price-label">Current Share Price</span>
+              <div class="price-value">
+                <span class="price-currency">$</span>
+                <span class="price-amount" id="google-price">198.45</span>
+                <span class="price-change up" id="google-change">▲ 2.34 (1.19%)</span>
+              </div>
+              <span class="price-updated">Updated just now · via Robinhood Oracle</span>
+            </div>
+
+            <!-- Whitelist / Public Status -->
+            <div class="mint-tier-card" id="mint-tier-card">
+              <div class="tier-indicator" id="tier-indicator">
+                <span class="material-icons-round tier-icon">shield</span>
+                <div>
+                  <span class="tier-label">Your Tier</span>
+                  <span class="tier-value" id="tier-value">Connect wallet to see your tier</span>
+                </div>
+              </div>
+              <div class="tier-prices">
+                <div class="tier-option active" id="tier-whitelist">
+                  <span class="tier-name">Whitelist</span>
+                  <span class="tier-price">4 <small>USDG</small></span>
+                </div>
+                <div class="tier-divider"></div>
+                <div class="tier-option" id="tier-public">
+                  <span class="tier-name">Public</span>
+                  <span class="tier-price">6 <small>USDG</small></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quantity Selector -->
+            <div class="mint-qty-card">
+              <span class="qty-label">Shares to Mint</span>
+              <div class="qty-control">
+                <button class="qty-btn" id="qty-minus" aria-label="Decrease">−</button>
+                <input type="number" class="qty-input" id="qty-input" value="1" min="1" max="100" readonly>
+                <button class="qty-btn" id="qty-plus" aria-label="Increase">+</button>
+              </div>
+              <div class="qty-total">
+                <span>Total Cost</span>
+                <span class="qty-total-value" id="mint-total">4.00 USDG</span>
+              </div>
+            </div>
+
+            <!-- Mint Button -->
+            <button class="btn-mint" id="btn-mint">
+              <span class="material-icons-round">add_circle</span>
+              <span>Mint Stock NFT</span>
+            </button>
+            <p class="mint-disclaimer">
+              By minting you agree to the stockNFT terms. Shares are custodied 1:1 by regulated partners.
+            </p>
+          </div>
+
+          <!-- Right Column: Certificate with 3D Frame -->
+          <div class="mint-cert-col">
+            <div class="cert-frame" id="cert-frame">
+              <div class="cert-glow"></div>
+              <div class="cert-card" id="cert-card">
+                <img
+                  src="/app/assets/google-certificate.png"
+                  alt="Google Stock Certificate NFT"
+                  class="cert-image"
+                  id="cert-image"
+                >
+                <div class="cert-reflection"></div>
+              </div>
+              <div class="cert-badge">
+                <span class="material-icons-round">verified</span>
+                <span>1:1 Backed · Audited</span>
+              </div>
+            </div>
+            <!-- Particle accents around certificate -->
+            <div class="cert-particles" id="cert-particles" aria-hidden="true"></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ---- Portfolio Page ---- -->
+      <section class="app-page" id="page-portfolio" aria-labelledby="tab-portfolio">
+        <div class="page-header">
+          <h1>Your Portfolio</h1>
+          <p>View and manage your tokenized stock holdings.</p>
+        </div>
+        <div class="page-body">
+          <!-- NFT Grid -->
+          <div class="portfolio-grid" id="portfolio-grid">
+            <!-- JS-populated with 8 NFT cards -->
+          </div>
+          <!-- Empty State (hidden when NFTs exist) -->
+          <div class="portfolio-empty" id="portfolio-empty" style="display:none;">
+            <span class="material-icons-round">inventory_2</span>
+            <h2>No NFTs Yet</h2>
+            <p>Head to the <a href="#" data-nav="mint">Mint page</a> to tokenize your first stock.</p>
+          </div>
+        </div>
+
+        <!-- NFT Detail Modal -->
+        <div class="modal-overlay" id="nft-modal-overlay" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-container" id="nft-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <button class="modal-close" id="modal-close" aria-label="Close modal">
+              <span class="material-icons-round">close</span>
+            </button>
+            <div class="modal-layout">
+              <!-- Left: Certificate Preview -->
+              <div class="modal-preview">
+                <div class="modal-cert-frame" id="modal-cert-frame">
+                  <img
+                    src="/app/assets/google-certificate.png"
+                    alt="NFT Certificate"
+                    class="modal-cert-image"
+                    id="modal-cert-image"
+                  >
+                </div>
+              </div>
+              <!-- Right: NFT Details -->
+              <div class="modal-details">
+                <span class="modal-badge">GOOGL</span>
+                <h2 class="modal-title" id="modal-title">Google Stock NFT #001</h2>
+                <div class="modal-info-grid">
+                  <div class="modal-info-item">
+                    <span class="modal-info-label">NFT ID</span>
+                    <span class="modal-info-value" id="modal-nft-id">#001</span>
+                  </div>
+                  <div class="modal-info-item">
+                    <span class="modal-info-label">Tokens</span>
+                    <span class="modal-info-value" id="modal-tokens">10 GOOGL</span>
+                  </div>
+                  <div class="modal-info-item">
+                    <span class="modal-info-label">Shares Backing</span>
+                    <span class="modal-info-value" id="modal-shares">10 Shares</span>
+                  </div>
+                  <div class="modal-info-item">
+                    <span class="modal-info-label">Mint Date</span>
+                    <span class="modal-info-value" id="modal-date">Jul 15, 2026</span>
+                  </div>
+                  <div class="modal-info-item">
+                    <span class="modal-info-label">Current Value</span>
+                    <span class="modal-info-value accent" id="modal-value">$1,984.50</span>
+                  </div>
+                  <div class="modal-info-item">
+                    <span class="modal-info-label">Status</span>
+                    <span class="modal-info-value" id="modal-status">
+                      <span class="status-badge claimed">Claimed</span>
+                    </span>
+                  </div>
+                </div>
+                <div class="modal-actions">
+                  <button class="btn-modal-action secondary" id="btn-redeem-nft">
+                    <span class="material-icons-round">swap_horiz</span>
+                    Redeem
+                  </button>
+                  <button class="btn-modal-action primary" id="btn-view-nft">
+                    <span class="material-icons-round">open_in_new</span>
+                    View on Explorer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---- Redeem Page ---- -->
+      <section class="app-page" id="page-redeem" aria-labelledby="tab-redeem">
+        <div class="page-header">
+          <h1>Redeem Stock NFTs</h1>
+          <p>Burn your stock NFTs to reclaim the underlying shares or equivalent value.</p>
+        </div>
+        <div class="page-body">
+          <div class="placeholder-card">
+            <span class="material-icons-round placeholder-icon">swap_horiz</span>
+            <h2>Redeem Panel</h2>
+            <p>Redemption form, fee breakdown, and processing timeline will go here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---- Admin Page ---- -->
+      <section class="app-page" id="page-admin" aria-labelledby="tab-admin">
+        <div class="page-header">
+          <h1>Admin Panel</h1>
+          <p>Protocol management, whitelisting, and system parameters.</p>
+        </div>
+        <div class="page-body">
+          <div class="placeholder-card">
+            <span class="material-icons-round placeholder-icon">admin_panel_settings</span>
+            <h2>Admin Panel</h2>
+            <p>Stock whitelisting, fee configuration, pause/unpause controls, and oracle management will go here.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script type="module" src="/app/src/app.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="description" content="stockNFT — Tokenized stocks on the Robinhood Chain. Trade, mint, and own stock-backed NFTs.">
+  <title>stockNFT · Tokenized Stocks on Robinhood Chain</title>
+  <link rel="icon" type="image/jpeg" href="/logo.jpg">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Round" rel="stylesheet">
+
+  <!-- Base Styles -->
+  <link rel="stylesheet" href="styles/main.css">
+
+  <!-- Three.js Import Map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body class="dark">
+
+  <!-- Loading Screen -->
+  <div id="loading-screen" aria-label="Loading">
+    <div class="loader-ring"></div>
+    <p class="loader-text">Loading stockNFT</p>
+  </div>
+
+  <!-- Three.js Canvas Container -->
+  <div id="webgl-bg" aria-hidden="true"></div>
+
+  <!-- Navigation -->
+  <nav id="navbar" role="navigation" aria-label="Main navigation">
+    <a href="#hero" class="nav-logo" aria-label="stockNFT Home">
+      <img src="/logo.jpg" alt="stockNFT Logo" class="nav-logo-img">
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features" class="nav-item"><span class="material-icons-round">bolt</span><span>Features</span></a></li>
+      <li><a href="#how-it-works" class="nav-item"><span class="material-icons-round">account_tree</span><span>How It Works</span></a></li>
+      <li><a href="#stats" class="nav-item"><span class="material-icons-round">bar_chart</span><span>Stats</span></a></li>
+      <li><a href="#roadmap" class="nav-item"><span class="material-icons-round">map</span><span>Roadmap</span></a></li>
+      <li><a href="#faq" class="nav-item"><span class="material-icons-round">help_outline</span><span>FAQ</span></a></li>
+    </ul>
+    <button class="btn-connect" id="btn-open-dapp" aria-label="Open DAPP">Open DAPP</button>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation menu">
+      <span class="material-icons-round">menu</span>
+    </button>
+  </nav>
+
+  <!-- Mobile Nav Overlay -->
+  <div class="mobile-nav" id="mobile-nav">
+    <ul>
+      <li><a href="#features" class="mobile-nav-item"><span class="material-icons-round">bolt</span>Features</a></li>
+      <li><a href="#how-it-works" class="mobile-nav-item"><span class="material-icons-round">account_tree</span>How It Works</a></li>
+      <li><a href="#stats" class="mobile-nav-item"><span class="material-icons-round">bar_chart</span>Stats</a></li>
+      <li><a href="#roadmap" class="mobile-nav-item"><span class="material-icons-round">map</span>Roadmap</a></li>
+      <li><a href="#faq" class="mobile-nav-item"><span class="material-icons-round">help_outline</span>FAQ</a></li>
+    </ul>
+    <a href="/app" class="btn-connect" style="margin-top: 24px; width: 100%; text-align: center; display: block; text-decoration: none;">Open DAPP</a>
+  </div>
+
+  <!-- Main Content -->
+  <main>
+
+    <!-- Hero Section -->
+    <section id="hero" class="section-hero">
+      <div class="hero-content">
+        <img src="/logo.jpg" alt="stockNFT" class="hero-logo" style="border-radius: 50%;">
+        <h1 class="hero-title">
+          <span class="hero-title-line">Tokenized Stocks NFTs</span>
+          <span class="hero-title-line accent">On Robinhood Chain</span>
+        </h1>
+        <p class="hero-subtitle">
+          Mint stock-backed NFTs. Trade 24/7. Own what you earn.
+        </p>
+        <div class="hero-cta-group">
+          <a href="#features" class="btn-primary">Explore Features</a>
+          <a href="#how-it-works" class="btn-outline">Learn More</a>
+        </div>
+        <div class="hero-ticker">
+          <div class="ticker-track" id="ticker-track">
+            <!-- JS-populated -->
+          </div>
+        </div>
+      </div>
+      <div class="scroll-indicator" aria-hidden="true">
+        <span class="material-icons-round">keyboard_arrow_down</span>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="section-features">
+      <div class="section-header">
+        <h2>Why stockNFT</h2>
+        <p class="section-subtitle">The future of stock ownership is on-chain</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="material-icons-round feature-icon">token</span>
+          <h3>Tokenized Equities</h3>
+          <p>Every stock NFT is 1:1 backed by real shares held in custody. Tradable 24/7 with instant settlement.</p>
+        </div>
+        <div class="feature-card">
+          <span class="material-icons-round feature-icon">bolt</span>
+          <h3>Lightning Fast</h3>
+          <p>Built on Robinhood Chain for sub-second finality. No more T+2 settlement — trade and settle instantly.</p>
+        </div>
+        <div class="feature-card">
+          <span class="material-icons-round feature-icon">shield</span>
+          <h3>Fully Audited</h3>
+          <p>Smart contracts audited by top-tier firms. Custody verified on-chain. Your assets, your keys.</p>
+        </div>
+        <div class="feature-card">
+          <span class="material-icons-round feature-icon">account_balance_wallet</span>
+          <h3>Self-Custody</h3>
+          <p>Hold your stock NFTs in any EVM wallet. No brokerage account needed. Truly own your investments.</p>
+        </div>
+        <div class="feature-card">
+          <span class="material-icons-round feature-icon">redeem</span>
+          <h3>Token Airdrop</h3>
+          <p>Receive a share of the token as part of the NFT loyalty, received and traceable in your NFT, on chain.</p>
+        </div>
+        <div class="feature-card">
+          <span class="material-icons-round feature-icon">account_tree</span>
+          <h3>Smart NFT</h3>
+          <p>Your NFT is a smart account on chain, using ERC-6551, it holds your share of the stock, as well as our native token, always redeemable, always traceable on chain.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="section-process">
+      <div class="section-header">
+        <h2>How It Works</h2>
+        <p class="section-subtitle">From fiat to on-chain stocks in four steps</p>
+      </div>
+      <div class="process-steps">
+        <div class="process-step">
+          <div class="step-number">01</div>
+          <span class="material-icons-round step-icon">wallet</span>
+          <h3>Connect Wallet</h3>
+          <p>Link your EVM-compatible wallet. No KYC required for basic access.</p>
+        </div>
+        <div class="process-step">
+          <div class="step-number">02</div>
+          <span class="material-icons-round step-icon">swap_horiz</span>
+          <h3>Mint</h3>
+          <p>Use USDG (Robinhood native stable coin) and mint a stock certificate NFT.</p>
+        </div>
+        <div class="process-step">
+          <div class="step-number">03</div>
+          <span class="material-icons-round step-icon">show_chart</span>
+          <h3>Receive the Stock</h3>
+          <p>After the mint is out, you will receive the share of the stock you purchased, distributed to your NFT, traceable on chain.</p>
+        </div>
+        <div class="process-step">
+          <div class="step-number">04</div>
+          <span class="material-icons-round step-icon">redeem</span>
+          <h3>Native Token Airdrop</h3>
+          <p>Holders of the NFT will receive our native token airdrop, $PILE, in their NFT, claimable at anytime.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats / Ticker Marquee -->
+    <section class="section-marquee">
+      <div class="marquee-row" id="marquee-tech">
+        <!-- JS-populated -->
+      </div>
+      <div class="marquee-row marquee-reverse" id="marquee-stocks">
+        <!-- JS-populated -->
+      </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section id="stats" class="section-stats">
+      <div class="section-header">
+        <h2>Collection Stats</h2>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value">4,083</span>
+          <span class="stat-label">Total Supply</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value">GOOGLon</span>
+          <span class="stat-label">Stock to Receive</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value">$PILE</span>
+          <span class="stat-label">Native Token</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value">1 Billion</span>
+          <span class="stat-label">Token Supply</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section id="roadmap" class="section-roadmap">
+      <div class="section-header">
+        <h2>Roadmap</h2>
+        <p class="section-subtitle">Our journey to revolutionize stock ownership</p>
+      </div>
+      <div class="roadmap-timeline">
+        <div class="roadmap-item done">
+          <div class="roadmap-marker"><span class="material-icons-round">check</span></div>
+          <div class="roadmap-content">
+            <span class="roadmap-phase">July 2026</span>
+            <h3>Mainnet Launch</h3>
+            <p>Platform on mainnet goes live. stockNFT smart contracts deployed and audited.</p>
+          </div>
+        </div>
+        <div class="roadmap-item active">
+          <div class="roadmap-marker"><span class="material-icons-round">play_arrow</span></div>
+          <div class="roadmap-content">
+            <span class="roadmap-phase">August 2026</span>
+            <h3>Initial Stock Release</h3>
+            <p>Stock distribution to the NFT holders, available to claim.</p>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-marker"><span class="material-icons-round">circle</span></div>
+          <div class="roadmap-content">
+            <span class="roadmap-phase">Mid August 2026</span>
+            <h3>$PILE Airdrop</h3>
+            <p>stockNFT token airdrop to the NFT holders, redeemable.</p>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-marker"><span class="material-icons-round">circle</span></div>
+          <div class="roadmap-content">
+            <span class="roadmap-phase">Late August 2026</span>
+            <h3>Expansion</h3>
+            <p>Offering other stock NFT and launchpad as well as marketplace for STOCK NFT holders.</p>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-marker"><span class="material-icons-round">circle</span></div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="section-faq">
+      <div class="section-header">
+        <h2>FAQ</h2>
+        <p class="section-subtitle">Everything you need to know</p>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> What is stockNFT?</summary>
+          <div class="faq-answer"><div><p>stockNFT is an NFT collection on the Robinhood Chain that works as a smart account, allowing the holders to have tokenized real-world stocks as NFTs. Each stock NFT holds a share of the purchased stock backed by actual shares held by a regulated custodian.</p></div></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> How are the stocks custodied?</summary>
+          <div class="faq-answer"><div><p>Underlying shares are held by licensed, regulated custodians. Custody proofs are published on-chain and verifiable by anyone. The custodian is legally obligated to maintain 1:1 backing.</p></div></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> What is the Robinhood Chain?</summary>
+          <div class="faq-answer"><div><p>Robinhood Chain is a high-performance EVM-compatible blockchain designed for financial applications. It offers sub-second finality, low gas fees, and native DeFi primitives optimized for tokenized assets.</p></div></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> Can I redeem my NFT for real shares?</summary>
+          <div class="faq-answer"><div><p>Yes. stockNFT supports redemption of NFTs for the underlying shares through a qualified broker. Redemption is subject to the custodian's standard processing timeline (typically T+2).</p></div></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> What is ERC-6551?</summary>
+          <div class="faq-answer"><div><p>ERC-6551 is a token standard that allows NFTs to act as smart accounts. Each stockNFT is a token-bound account (TBA) that can hold assets like the underlying stock shares and $PILE tokens, making your NFT a self-custodial wallet on chain. Everything is traceable, redeemable, and owned entirely by you.</p></div></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> What wallets are supported?</summary>
+          <div class="faq-answer"><div><p>Currently, stockNFT project supports MetaMask, OKX, CoinBase, and Phantom. More wallet compatibles to come.</p></div></div>
+        </details>
+        <details class="faq-item">
+          <summary><span class="material-icons-round">add</span> What are the fees?</summary>
+          <div class="faq-answer"><div><p>On mint phase: just the gas fee on Robinhood Chain. On claim of the $PILE token, the gas fee for claim, and for the share of stock, the gas fee as well as 5% management fee.</p></div></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="footer">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <img src="/logo.jpg" alt="stockNFT" class="footer-logo">
+          <p>Tokenized stocks on the Robinhood Chain.<br>Trade 24/7. Own what you earn.</p>
+        </div>
+        <div class="footer-links">
+          <h4>Protocol</h4>
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#stats">Stats</a>
+          <a href="#roadmap">Roadmap</a>
+        </div>
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <a href="/doc">Documentation</a>
+        </div>
+        <div class="footer-links">
+          <h4>Community</h4>
+          <a href="https://x.com/StocksNFT_" target="_blank" rel="noopener">Twitter / X</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 stockNFT. All rights reserved.</p>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- Scripts -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
+
+

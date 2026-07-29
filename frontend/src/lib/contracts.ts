@@ -1,147 +1,124 @@
-/**
- * Google Stock NFT V2 — Contract ABIs, Addresses, and Single Source of Truth
- *
- * V2 Architecture:
- * - No DeFi (Aave V3, InterestDistributor, GooglonSwapAdapter, TreasuryVault removed)
- * - ERC-6551 TBA integration (claim tokens through NFT's bound account)
- * - Two-phase mint (Whitelist 4 USDG, Public 6 USDG)
- * - DiamondHands loyalty rewards
- * - $G-Pass token (OurToken) — pre-minted, claimable from TBA
- */
+// Contract addresses — Google Stock NFT (Mainnet)
+export const CONTRACT_ADDRESSES = {
+  googleStockNFT: process.env.NEXT_PUBLIC_NFT_ADDRESS || "",
+  platformManager: process.env.NEXT_PUBLIC_PLATFORM_ADDRESS || "",
+  stockVault: process.env.NEXT_PUBLIC_STOCK_ADDRESS || "",
+  interestDistributor: process.env.NEXT_PUBLIC_INTEREST_ADDRESS || "",
+  googlon: process.env.NEXT_PUBLIC_GOOGLON_ADDRESS || "",
+  treasuryEOA: process.env.NEXT_PUBLIC_TREASURY_EOA || "",
+  treasuryVaultAddress: process.env.NEXT_PUBLIC_TREASURY_VAULT_ADDRESS || process.env.NEXT_PUBLIC_TREASURY_EOA || "",
+  deployerAddress: process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "",
+  // DeFi (real mainnet addresses with defaults)
+  aavePool: process.env.NEXT_PUBLIC_AAVE_POOL_ADDRESS || "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+  aToken: process.env.NEXT_PUBLIC_AUSDC_ADDRESS || "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c",
+  uniswapV3Router: process.env.NEXT_PUBLIC_UNISWAP_V3_ROUTER || "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+  weth: process.env.NEXT_PUBLIC_WETH_ADDRESS || "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  usdc: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+};
 
-import type { Address } from "viem";
-
-// ====================================================================
-// Environment-derived addresses (single source of truth)
-// ====================================================================
-
-export const ADDRESSES = {
-  nft: (process.env.NEXT_PUBLIC_NFT_ADDRESS || "0x7b2db28C6F248Ad602c23A38E9419E8476340728") as Address,
-  platform: (process.env.NEXT_PUBLIC_PLATFORM_ADDRESS || "0xd3Afa4B4529619a09d7f78d0898d69f413EE8df4") as Address,
-  stock: (process.env.NEXT_PUBLIC_STOCK_ADDRESS || "0x0B5E63B5812a4F50D3C35f4e2b8c886Db0f13D26") as Address,
-  ourToken: (process.env.NEXT_PUBLIC_OUR_TOKEN_ADDRESS || "") as Address,
-  diamondHands: (process.env.NEXT_PUBLIC_DIAMOND_HANDS_ADDRESS || "") as Address,
-  erc6551Account: (process.env.NEXT_PUBLIC_ERC6551_ACCOUNT_ADDRESS || "0x7612959e3dF93AF717270Cb55FF98853e47A04d7") as Address,
-  googl: (process.env.NEXT_PUBLIC_GOOGL_ADDRESS || "0x02f86DcC514C4974A0664f7364F93382997A01F6") as Address,
-  usdg: (process.env.NEXT_PUBLIC_USDG_ADDRESS || "0xB14F6cFc482de0DadE91344Bd27d01Ee6C499e80") as Address,
-  treasury: (process.env.NEXT_PUBLIC_TREASURY_EOA || "0x2bAFb4513b5e9a8C6BBb9ce063f5b18BF1B2cc1E") as Address,
-} as const;
-
-// ====================================================================
-// ABI Fragments (minimal — only functions called from frontend)
-// ====================================================================
-
-// ---- GoogleStockNFT (ERC-721 + soulbound + two-phase mint) ----
-export const NFT_ABI = [
-  // ERC-721 read
-  "function name() view returns (string)",
-  "function symbol() view returns (string)",
-  "function totalSupply() view returns (uint256)",
-  "function balanceOf(address) view returns (uint256)",
+// Minimal ABIs for the frontend (read + write operations)
+export const GOOGLE_STOCK_NFT_ABI = [
+  "function mint(uint256 googlPrice) payable returns (uint256)",
+  "function mintActive() view returns (bool)",
+  "function mintPrice() view returns (uint256)",
+  "function treasuryEOA() view returns (address)",
   "function ownerOf(uint256) view returns (address)",
+  "function balanceOf(address) view returns (uint256)",
+  "function mintPrincipal(uint256) view returns (uint256)",
+  "function googlPriceAtMint(uint256) view returns (uint256)",
   "function tokenURI(uint256) view returns (string)",
-  "function tokenByIndex(uint256) view returns (uint256)",
-  "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
-
-  // Mint (two-phase)
-  "function mint(address to, bytes32[] calldata proof) external returns (uint256)",
-
-  // Soulbound
-  "function isSoulbound(uint256 tokenId) view returns (bool)",
-
-  // Phase
-  "function mintPhase() view returns (uint8)",
-  "function whitelistRoot() view returns (bytes32)",
-
-  // Events
-  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
-  "event Minted(uint256 indexed tokenId, address indexed buyer, uint256 usdgPaid, uint8 phase)",
-  "event SoulboundSet(uint256 indexed tokenId, bool soulbound)",
-] as const;
-
-// ---- PlatformManager (phase management) ----
-export const PLATFORM_ABI = [
-  "function mintPhase() view returns (uint8)",
-  "function whitelistRoot() view returns (bytes32)",
-  "function treasury() view returns (address)",
-  "function owner() view returns (address)",
-  "function setPhase(uint8 _phase) external",
-  "function setWhitelistRoot(bytes32 _root) external",
-  "function triggerMintEnd() external",
-  "function pause() external",
-  "function unpause() external",
-  "event PhaseChanged(uint8 indexed oldPhase, uint8 indexed newPhase)",
-] as const;
-
-// ---- StockVault (TBA claims + GOOGL redemption) ----
-export const STOCK_ABI = [
-  // TBA
-  "function tbaForToken(uint256) view returns (address)",
-  "function claimOurToken(uint256 tokenId) external",
-  "function claimGOOGL(uint256 tokenId) external",
-
-  // GOOGL
-  "function googlPerNFT() view returns (uint256)",
-  "function googlAddress() view returns (address)",
-
-  // NFT purchase
-  "function purchaseViaUniswap(address tokenIn, uint256 amountIn, uint256 minGooglOut) external returns (uint256)",
-
-  // State
-  "function paused() view returns (bool)",
-  "function owner() view returns (address)",
-
-  // Events
-  "event OurTokenClaimed(uint256 indexed tokenId, uint256 amount)",
-  "event GOOGLClaimed(uint256 indexed tokenId, uint256 amount)",
-] as const;
-
-// ---- ERC-20 (standard) ----
-export const ERC20_ABI = [
-  "function name() view returns (string)",
-  "function symbol() view returns (string)",
-  "function decimals() view returns (uint8)",
   "function totalSupply() view returns (uint256)",
-  "function balanceOf(address) view returns (uint256)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function transfer(address to, uint256 amount) returns (bool)",
-] as const;
+  "function tokenByIndex(uint256) view returns (uint256)",
+  "function tokenOfOwnerByIndex(address,uint256) view returns (uint256)",
+  "function royaltyInfo(uint256,uint256) view returns (address,uint256)",
+  "function transferFrom(address,address,uint256) payable",
+  "function safeTransferFrom(address,address,uint256) payable",
+  "function setApprovalForAll(address,bool)",
+  "function isApprovedForAll(address,address) view returns (bool)",
+  "function interestStartTimestamp(uint256) view returns (uint48)",
+];
 
-// ---- DiamondHands ----
-export const DIAMOND_HANDS_ABI = [
-  "function claimable(uint256 tokenId) view returns (uint256)",
-  "function claim(uint256 tokenId) external",
-  "function totalRewardPool() view returns (uint256)",
-  "function rewardPerNFT() view returns (uint256)",
-  "function mintEndTime() view returns (uint256)",
-  "function sweepDeadline() view returns (uint256)",
-  "event RewardsClaimed(uint256 indexed tokenId, uint256 amount)",
-] as const;
-
-// ---- ERC-6551 Registry (canonical) ----
-export const ERC6551_REGISTRY_ABI = [
-  "function account(address implementation, uint256 chainId, address tokenContract, uint256 tokenId, uint256 salt) view returns (address)",
-  "function createAccount(address implementation, uint256 chainId, address tokenContract, uint256 tokenId, uint256 salt, bytes calldata initData) external returns (address)",
-] as const;
-
-// ---- ERC-6551 Account ----
-export const ERC6551_ACCOUNT_ABI = [
-  "function token() view returns (uint256 chainId, address tokenContract, uint256 tokenId)",
+export const STOCK_VAULT_ABI = [
+  "function purchaseComplete() view returns (bool)",
+  "function getShares(uint256) view returns (uint256)",
+  "function nftShares(uint256) view returns (uint256)",
+  "function requestRedemption(uint256)",
+  "function claimRedemption(uint256)",
+  "function redemptionRequest(uint256) view returns (uint48)",
   "function owner() view returns (address)",
-  "function execute(address to, uint256 value, bytes calldata data, uint8 operation) external returns (bytes memory)",
-  "function isValidSignature(bytes32 hash, bytes calldata signature) view returns (bytes4)",
-  "function supportsInterface(bytes4 interfaceId) view returns (bool)",
-] as const;
+  "function treasuryVault() view returns (address)",
+  "function updateTreasuryVault(address)",
+  "function receivePool80Funds() payable",
+  "function receiveLoyaltyFunds() payable",
+  "function executeGooglePurchase(uint256)",
+  "function totalGooglonHeld() view returns (uint256)",
+  "function pool80Funds() view returns (uint256)",
+  "function loyaltyFunds() view returns (uint256)",
+];
 
-// ---- Mock USDG Faucet ----
-export const FAUCET_ABI = [
-  "function mint(address to, uint256 amount)",
+export const PLATFORM_MANAGER_ABI = [
+  "function owner() view returns (address)",
+  "function pool80() view returns (uint256)",
+  "function pool20() view returns (uint256)",
+  "function totalDeFiPrincipal() view returns (uint256)",
+  "function totalLoyaltyFees() view returns (uint256)",
+  "function totalMintPrincipal() view returns (uint256)",
+  "function gap20() view returns (uint256)",
+  "function canTrigger() view returns (bool)",
+  "function mintEnded() view returns (bool)",
+  "function triggerFired() view returns (bool)",
+  "function totalBurned() view returns (uint256)",
+  "function sweepInterval() view returns (uint256)",
+  "function pauseMint()",
+  "function resumeMint()",
+  "function pauseAndBurn(uint256)",
+  "function stopMintAndBurn(uint256)",
+  "function triggerGooglePurchase(uint256)",
+  "function recordSweep(uint256)",
+  "function recordHarvest(uint256)",
+  "function receiveLoyalty(uint256)",
+  "function setSweepInterval(uint256)",
+];
+
+export const INTEREST_DISTRIBUTOR_ABI = [
+  "function getPendingInterest(uint256) view returns (uint256)",
+  "function claimInterest(uint256)",
+  "function interestPool() view returns (uint256)",
+  "function distributionPerToken() view returns (uint256)",
+  "function distributionPerTokenForRound(uint256) view returns (uint256)",
+  "function distributionRound() view returns (uint256)",
+  "function lastClaimedRound(uint256) view returns (uint256)",
+  "function claimsAllowed() view returns (bool)",
+  "function owner() view returns (address)",
+  "function treasuryVault() view returns (address)",
+  "function updateTreasuryVault(address)",
+  "function fundEqualDistribution() payable",
+  "function allowClaims()",
+];
+
+
+export const AAVE_V3_POOL_ABI_EXTENDED = [
+  // Full getReserveData for reading liquidityIndex
+  "function getReserveData(address asset) view returns (uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt)",
+];
+
+export const ATOKEN_ABI = [
+  "function scaledBalanceOf(address user) view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
-] as const;
+];
 
-// ====================================================================
-// Canonical ERC-6551 Registry Address
-// ====================================================================
+export const UNISWAP_V3_ROUTER_ABI = [
+  "function exactInputSingle(tuple(address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) payable returns (uint256 amountOut)",
+];
 
-export const ERC6551_REGISTRY = "0x000000006551c19487814612e58FE06813775758" as Address;
+export const WETH_ABI = [
+  "function deposit() payable",
+  "function withdraw(uint256)",
+  "function approve(address,uint256) returns (bool)",
+];
+
+export const ERC20_ABI = [
+  "function approve(address,uint256) returns (bool)",
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+];

@@ -4,210 +4,257 @@ pragma solidity ^0.8.27;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./interfaces/IERC6551Registry.sol";
 
-/**
- * @title IGooglonSwap
- * @notice Minimal interface for swapping ETH → GOOGLon.
- *         Testnet: MockGooglonSwap mints MockGOOGLon at fixed price.
- *         Mainnet: GooglonSwapAdapter uses Uniswap V3/V4 for real swaps.
- */
-interface IGooglonSwap {
-    function swapEthForGooglon(
-        uint256 ethAmount,
-        uint256 minGooglonOut
-    ) external payable returns (uint256 googlonReceived);
+interface IUniswapV3Router {
+    struct ExactInputParams {
+        bytes path;
+        address recipient;
+        uint256 deadline;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+    }
+    function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut);
 }
 
 /**
- * @title StockVault
- * @notice Executes the one-time Google (GOOGLon) purchase via a swap adapter
- *         and handles user redemptions with a 48-hour delay and 5% fee.
+ * @title StockVault V2 (ERC-6551)
+ * @notice Receives 80% of USDG mint fees, swaps USDG→GOOGL via Uniswap V3,
+ *         and handles two-phase claims via Token Bound Accounts (TBA).
+ *
+ *           Phase 1 — claimOurToken → $G-Pass sent to NFT's TBA
+ *           Phase 2 — claimGOOGL → GOOGL sent to NFT's TBA (minus 5% fee)
+ *
+ *         NFT is never burned. After both claims, NFT becomes soulbound.
+ *         Users withdraw assets from TBA to wallet via withdrawFromTBA().
  */
-contract StockVault is Ownable {
+contract StockVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // ==================== Errors ====================
-    error OnlyPlatformManager();
     error PurchaseAlreadyExecuted();
-    error RedemptionNotRequested();
-    error RedemptionTooEarly(uint48 availableAt);
     error NotNFTOwner();
-    error NothingToRedeem();
+    error NothingToClaim();
+    error PhaseNotOpen();
+    error AlreadyClaimed();
 
-    // ==================== Constants ====================
-    uint256 public constant REDEMPTION_FEE_BPS = 500; // 5%
+    uint256 public constant REDEMPTION_FEE_BPS = 500;
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
-    // ==================== Configurable (set by owner) ====================
-    uint48 public redemptionDelay = 48 hours;
-    address public feeRecipient;                // Receives redemption fees
+    // ─── Immutable tokens ───
+    IERC20 public immutable usdgToken;
+    IERC20 public immutable googlToken;
+    IERC20 public ourToken;
 
-    // ==================== State ====================
-    IERC20 public immutable usdcToken;
-    IERC20 public immutable googlonToken;
-    IGooglonSwap public googlonSwap;           // ETH→GOOGLon swap adapter
+    // ─── Uniswap V3 config ───
+    address public immutable swapRouter;
+    bytes public usdgToGooglPath;
+
+    // ─── ERC-6551 ───
+    address public erc6551Registry;
+    address public erc6551Implementation;
+
+    // ─── Admin addresses ───
     address public platformManager;
     address public googleStockNFT;
-    address public treasuryVault;
+    address public treasuryEOA;
+    address public feeRecipient;
 
-    /// @notice Total GOOGLon held by the vault after the one-time purchase
-    uint256 public totalGooglonHeld;
+    // ─── Phase 1: $G-Pass claim ───
+    bool public phase1Open;
+    uint256 public totalOurTokenForRedemption;
+    mapping(uint256 => bool) public ourTokenClaimed;
 
-    /// @notice Whether the one-time Google purchase has been completed
+    // ─── Phase 2: GOOGL claim ───
     bool public purchaseComplete;
+    bool public googlClaimable;
+    uint256 public totalGooglonHeld;
+    mapping(uint256 => bool) public googlClaimed;
 
-    /// @notice USDC received from pool80 (TreasuryVault)
-    uint256 public pool80Funds;
+    // ─── Events ───
+    event MintFundsReceived(uint256 amount);
+    event PurchaseExecuted(uint256 usdgSpent, uint256 googlonReceived);
+    event Phase1Claimed(uint256 indexed tokenId, address indexed user, address indexed tba, uint256 amount);
+    event GOOGLClaimed(uint256 indexed tokenId, address indexed user, address indexed tba, uint256 toUser, uint256 fee);
 
-    /// @notice USDC received from loyalty fees (PlatformManager)
-    uint256 public loyaltyFunds;
-
-    /// @notice GOOGLon allocation per NFT token ID
-    mapping(uint256 => uint256) public nftShares;
-
-    /// @notice Timestamp when redemption was requested (0 = not requested)
-    mapping(uint256 => uint48) public redemptionRequest;
-
-    /// @notice Address that requested redemption (prevents front-running claims)
-    mapping(uint256 => address) public redemptionRequester;
-
-    // ==================== Events ====================
-    event PurchaseExecuted(uint256 usdcSpent, uint256 googlonReceived);
-    event RedemptionRequested(
-        uint256 indexed tokenId,
-        address indexed owner,
-        uint256 googlonAmount
-    );
-    event RedemptionClaimed(
-        uint256 indexed tokenId,
-        address indexed user,
-        uint256 amountAfterFee,
-        uint256 fee
-    );
-
-    // ==================== Modifiers ====================
-    modifier onlyPlatformManager() {
-        require(msg.sender == platformManager, "Not PlatformManager");
-        _;
-    }
-
-    // ==================== Constructor ====================
     constructor(
-        address _usdcToken,
-        address _googlonToken,
-        address _initialOwner
-    ) Ownable(_initialOwner) {
-        require(_usdcToken != address(0), "Zero USDC");
-        require(_googlonToken != address(0), "Zero GOOGLon");
-        usdcToken = IERC20(_usdcToken);
-        googlonToken = IERC20(_googlonToken);
-        feeRecipient = _initialOwner;
+        address _usdgToken,
+        address _googlToken,
+        address _swapRouter,
+        address _owner,
+        address _treasury
+    ) Ownable(_owner) {
+        require(_usdgToken != address(0) && _googlToken != address(0) && _swapRouter != address(0), "Zero addr");
+        usdgToken = IERC20(_usdgToken);
+        googlToken = IERC20(_googlToken);
+        swapRouter = _swapRouter;
+        treasuryEOA = _treasury;
+        feeRecipient = _treasury;
     }
 
-    // ==================== Initial Setup ====================
+    // ─── Setup ───
+    function setPlatformManager(address _a) external onlyOwner { require(platformManager == address(0)); platformManager = _a; }
+    function updatePlatformManager(address _a) external onlyOwner { require(_a != address(0)); platformManager = _a; }
+    function setGoogleStockNFT(address _a) external onlyOwner { require(googleStockNFT == address(0)); googleStockNFT = _a; }
+    function updateGoogleStockNFT(address _a) external onlyOwner { require(_a != address(0)); googleStockNFT = _a; }
+    function setOurToken(address _a) external onlyOwner { require(address(ourToken) == address(0)); ourToken = IERC20(_a); }
+    function updateTreasury(address _a) external onlyOwner { require(_a != address(0)); treasuryEOA = _a; }
+    function setFeeRecipient(address _a) external onlyOwner { require(_a != address(0)); feeRecipient = _a; }
+    function setSwapPath(bytes calldata _path) external onlyOwner { usdgToGooglPath = _path; }
 
-    function setPlatformManager(address _addr) external onlyOwner {
-        require(platformManager == address(0), "Already set");
-        platformManager = _addr;
+    /// @notice Set ERC-6551 registry + implementation (one-time). Called by PlatformManager.
+    function setERC6551(address _registry, address _impl) external {
+        require(msg.sender == platformManager || msg.sender == owner(), "Auth");
+        require(erc6551Registry == address(0), "Already set");
+        require(_registry != address(0) && _impl != address(0), "Zero addr");
+        erc6551Registry = _registry;
+        erc6551Implementation = _impl;
     }
 
-    /// @notice Update the PlatformManager address (for upgrades)
-    function updatePlatformManager(address _addr) external onlyOwner {
-        require(_addr != address(0), "Invalid address");
-        platformManager = _addr;
+    /// @notice Update only the TBA implementation address (for upgrades).
+    function updateERC6551Implementation(address _impl) external {
+        require(msg.sender == platformManager || msg.sender == owner(), "Auth");
+        require(_impl != address(0), "Zero addr");
+        erc6551Implementation = _impl;
     }
 
-    function setGoogleStockNFT(address _addr) external onlyOwner {
-        require(googleStockNFT == address(0), "Already set");
-        googleStockNFT = _addr;
+    // ─── Receive USDG from mints (called by GoogleStockNFT) ───
+    function receiveMintFunds(uint256 amount) external {
+        require(msg.sender == googleStockNFT, "Not NFT");
+        emit MintFundsReceived(amount);
     }
 
-    /// @notice Update the NFT address after initial setup (e.g., contract upgrade)
-    function updateGoogleStockNFT(address _addr) external onlyOwner {
-        require(_addr != address(0), "Zero address"); googleStockNFT = _addr;
+    // ─── Fund Phase 1 (called by OurToken deployer) ───
+    /// @notice OurToken pre-mints 500M to StockVault at construction. This records the amount for distribution.
+    function fundPhase1(uint256 amount) external onlyOwner {
+        require(address(ourToken) != address(0), "OurToken not set");
+        totalOurTokenForRedemption += amount;
     }
 
-    function setTreasuryVault(address _addr) external onlyOwner {
-        require(treasuryVault == address(0), "Already set");
-        treasuryVault = _addr;
+    // ─── Phase 1: Claim $G-Pass (no burn, goes to TBA) ───
+    function openPhase1() external onlyOwner { phase1Open = true; }
+
+    function claimOurToken(uint256 tokenId) external nonReentrant {
+        require(phase1Open, "Phase 1 not open");
+        require(!ourTokenClaimed[tokenId], "Already claimed");
+        require(_isNFTOwner(tokenId, msg.sender), "Not NFT owner");
+
+        uint256 share = _getOurTokenShare(tokenId);
+        require(share > 0, "No $G-Pass share");
+        require(ourToken.balanceOf(address(this)) >= share, "Insufficient $G-Pass");
+
+        // State update BEFORE external calls (Checks-Effects-Interactions)
+        ourTokenClaimed[tokenId] = true;
+
+        // Deploy TBA if needed, send $G-Pass to TBA (not msg.sender)
+        address tba = _ensureTBA(tokenId);
+        ourToken.safeTransfer(tba, share);
+
+        // Auto-soulbound if both claimed
+        _autoMarkSoulbound(tokenId);
+
+        emit Phase1Claimed(tokenId, msg.sender, tba, share);
     }
 
-    function updateTreasuryVault(address _addr) external onlyOwner {
-        require(_addr != address(0), "Zero address"); treasuryVault = _addr;
-    }
-
-    function setRedemptionDelay(uint48 _delay) external onlyOwner {
-        require(_delay > 0, "Cannot be zero");
-        redemptionDelay = _delay;
-    }
-
-    function setFeeRecipient(address _addr) external onlyOwner {
-        require(_addr != address(0), "Zero address");
-        feeRecipient = _addr;
-    }
-
-    /// @notice Set the ETH→GOOGLon swap adapter (once). Testnet: MockGooglonSwap. Mainnet: GooglonSwapAdapter.
-    function setGooglonSwap(address _swap) external onlyOwner {
-        require(address(googlonSwap) == address(0), "Already set");
-        require(_swap != address(0), "Zero address");
-        googlonSwap = IGooglonSwap(_swap);
-    }
-
-    /// @notice Update the swap adapter address (e.g., for upgrades).
-    function updateGooglonSwap(address _swap) external onlyOwner {
-        require(_swap != address(0), "Zero address");
-        googlonSwap = IGooglonSwap(_swap);
-    }
-
-    // ==================== Fund Reception (ETH — sent by Treasury EOA) ====================
-
-    /**
-     * @notice Receive 80% pool funds from Treasury EOA (in native ETH).
-     */
-    function receivePool80Funds() external payable {
-        require(
-            msg.sender == owner() || msg.sender == platformManager || msg.sender == treasuryVault,
-            "Not authorized"
-        );
-        pool80Funds += msg.value;
-    }
-
-    /**
-     * @notice Receive loyalty funds from Treasury EOA (in native ETH).
-     */
-    function receiveLoyaltyFunds() external payable {
-        require(
-            msg.sender == owner() || msg.sender == platformManager,
-            "Not authorized"
-        );
-        loyaltyFunds += msg.value;
-    }
-
-    // ==================== Google Purchase ====================
-
-    /**
-     * @notice Execute the one-time GOOGLon purchase. Only PlatformManager.
-     * @param totalETH Total ETH to swap (typically totalMintPrincipal)
-     * @param minGooglonOut Minimum GOOGLon to receive (slippage protection)
-     */
-    function executeGooglePurchase(
-        uint256 totalETH,
-        uint256 minGooglonOut
-    ) external onlyPlatformManager returns (uint256 googlonReceived) {
+    // ─── GOOGL Purchase ───
+    function executeGooglePurchase(uint256 usdgAmount, uint256 minGooglOut)
+        external returns (uint256 googlonReceived)
+    {
+        require(msg.sender == owner() || msg.sender == treasuryEOA || msg.sender == platformManager, "Not authorized");
         require(!purchaseComplete, "Already executed");
-        require(totalETH > 0, "Zero amount");
-        require(address(this).balance >= totalETH, "Insufficient ETH");
+        require(usdgAmount > 0, "Zero");
+        require(usdgToGooglPath.length > 0, "Swap path not set");
+        require(usdgToken.balanceOf(address(this)) >= usdgAmount, "Insufficient USDG");
 
         purchaseComplete = true;
-        googlonReceived = _executeSwap(totalETH, minGooglonOut);
+
+        IERC20(address(usdgToken)).approve(swapRouter, usdgAmount);
+        IUniswapV3Router.ExactInputParams memory params = IUniswapV3Router.ExactInputParams({
+            path: usdgToGooglPath,
+            recipient: address(this),
+            deadline: block.timestamp + 300,
+            amountIn: usdgAmount,
+            amountOutMinimum: minGooglOut
+        });
+        googlonReceived = IUniswapV3Router(swapRouter).exactInput(params);
+        require(googlonReceived >= minGooglOut, "Slippage");
+
         totalGooglonHeld = googlonReceived;
 
-        emit PurchaseExecuted(totalETH, googlonReceived);
+        uint256 dust = usdgToken.balanceOf(address(this));
+        if (dust > 0) usdgToken.safeTransfer(treasuryEOA, dust);
+
+        emit PurchaseExecuted(usdgAmount, googlonReceived);
     }
 
-    /// @notice Calculate GOOGLon shares for a token — dynamic, no pre-assignment needed
+    // ─── Phase 2: Claim GOOGL (no burn, goes to TBA, 5% fee → treasury) ───
+    function openGOOGLClaims() external {
+        require(msg.sender == owner() || msg.sender == treasuryEOA, "Auth");
+        require(purchaseComplete, "Purchase not done");
+        googlClaimable = true;
+    }
+
+    function claimGOOGL(uint256 tokenId) external nonReentrant {
+        require(purchaseComplete, "Purchase not complete");
+        require(googlClaimable, "GOOGL claims not open");
+        require(!googlClaimed[tokenId], "Already claimed");
+        require(_isNFTOwner(tokenId, msg.sender), "Not NFT owner");
+
+        uint256 shares = getShares(tokenId);
+        require(shares > 0, "No GOOGL shares");
+
+        // State update BEFORE external calls
+        googlClaimed[tokenId] = true;
+
+        address tba = _ensureTBA(tokenId);
+
+        uint256 fee = (shares * REDEMPTION_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 toUser = shares - fee;
+
+        googlToken.safeTransfer(tba, toUser);
+        googlToken.safeTransfer(feeRecipient, fee);
+
+        _autoMarkSoulbound(tokenId);
+
+        emit GOOGLClaimed(tokenId, msg.sender, tba, toUser, fee);
+    }
+
+    // ─── TBA Helpers ───
+
+    /// @notice Get the deterministic TBA address for a token ID (works before deployment).
+    function tbaForToken(uint256 tokenId) public view returns (address) {
+        if (erc6551Registry == address(0) || erc6551Implementation == address(0)) return address(0);
+        return IERC6551Registry(erc6551Registry).account(
+            erc6551Implementation,
+            bytes32(0),
+            block.chainid,
+            googleStockNFT,
+            tokenId
+        );
+    }
+
+    /// @notice Deploy TBA for a token if not already deployed. Returns the TBA address.
+    function _ensureTBA(uint256 tokenId) internal returns (address tba) {
+        tba = tbaForToken(tokenId);
+        if (tba.code.length == 0) {
+            tba = IERC6551Registry(erc6551Registry).createAccount(
+                erc6551Implementation,
+                bytes32(0),
+                block.chainid,
+                googleStockNFT,
+                tokenId
+            );
+        }
+    }
+
+    // Note: withdrawFromTBA removed. Users call TBA.execute() directly from their wallet.
+    // The TBA's execute() only allows the NFT owner — which is the correct security model.
+    // Frontend should provide a "Withdraw from TBA" button that calls:
+    //   tba.execute(tokenAddress, 0, abi.encodeWithSignature("transfer(address,uint256)", userWallet, amount), 0)
+
+    // ─── Share Calculation ───
+
     function getShares(uint256 tokenId) public view returns (uint256) {
-        if (nftShares[tokenId] > 0) return nftShares[tokenId];
         if (totalGooglonHeld == 0) return 0;
 
         (bool ok, bytes memory data) = googleStockNFT.staticcall(
@@ -227,118 +274,40 @@ contract StockVault is Ownable {
         return (totalGooglonHeld * principal) / totalPrincipal;
     }
 
-    /**
-     * @dev Executes ETH→GOOGLon swap via the configured adapter.
-     *      The GooglonSwapAdapter wraps ETH→WETH, swaps via Uniswap V3.
-     * @param ethAmount Amount of ETH to swap
-     * @param minGooglonOut Minimum GOOGLon to receive (slippage protection)
-     * @return googlonReceived Amount of GOOGLon received
-     */
-    function _executeSwap(uint256 ethAmount, uint256 minGooglonOut) private returns (uint256 googlonReceived) {
-        require(address(googlonSwap) != address(0), "Swap adapter not set");
+    // ─── Internal ───
 
-        googlonReceived = googlonSwap.swapEthForGooglon{value: ethAmount}(
-            ethAmount,
-            minGooglonOut
-        );
-
-        require(googlonReceived > 0, "Swap returned 0 GOOGLon");
-    }
-
-    /// @notice Withdraw surplus ETH (loyalty fees beyond what was swapped) back to treasury.
-    function withdrawSurplus() external {
-        require(msg.sender == owner() || msg.sender == platformManager, "Not authorized");
-        require(purchaseComplete, "Purchase not yet executed");
-        uint256 surplus = address(this).balance;
-        require(surplus > 0, "No surplus");
-        payable(owner()).transfer(surplus);
-    }
-
-    /**
-     * @notice After the purchase, assign proportional GOOGLon shares to each NFT.
-     *         Called by PlatformManager after executeGooglePurchase.
-     * @param tokenIds Array of token IDs to assign shares to
-     * @param principals Array of USDC principals for each token ID
-     * @param totalPrincipal Sum of all principals
-     */
-    function assignShares(
-        uint256[] calldata tokenIds,
-        uint256[] calldata principals,
-        uint256 totalPrincipal
-    ) external onlyPlatformManager {
-        require(purchaseComplete, "Purchase not complete");
-        require(tokenIds.length == principals.length, "Length mismatch");
-        require(totalPrincipal > 0, "Zero principal");
-
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            if (principals[i] > 0) {
-                nftShares[tokenIds[i]] =
-                    (totalGooglonHeld * principals[i]) /
-                    totalPrincipal;
-            }
-        }
-    }
-
-    // ==================== Redemption ====================
-
-    /**
-     * @notice Request redemption. Burns the NFT and starts 48h countdown.
-     *         Only the current NFT owner can call this.
-     * @param tokenId The NFT to redeem
-     */
-    function requestRedemption(uint256 tokenId) external {
-        require(purchaseComplete, "Purchase not complete");
-        uint256 shares = getShares(tokenId);
-        require(shares > 0, "No shares to redeem");
-
-        // Verify caller is the NFT owner (ERC-721)
-        require(googleStockNFT != address(0), "NFT contract not set");
-        (bool success, bytes memory data) = googleStockNFT.staticcall(
+    function _isNFTOwner(uint256 tokenId, address user) internal view returns (bool) {
+        require(googleStockNFT != address(0), "NFT not set");
+        (bool ok, bytes memory data) = googleStockNFT.staticcall(
             abi.encodeWithSignature("ownerOf(uint256)", tokenId)
         );
-        require(success && abi.decode(data, (address)) == msg.sender, "Not NFT owner");
-
-        // Burn the NFT (ERC-721)
-        (bool burned, ) = googleStockNFT.call(
-            abi.encodeWithSignature("burnForRedemption(uint256)", tokenId)
-        );
-        require(burned, "Burn failed");
-
-        redemptionRequest[tokenId] = uint48(block.timestamp);
-        redemptionRequester[tokenId] = msg.sender;
-
-        emit RedemptionRequested(tokenId, msg.sender, shares);
+        return ok && abi.decode(data, (address)) == user;
     }
 
-    /**
-     * @notice Claim redemption after 48h. Sends GOOGLon minus 5% fee.
-     * @param tokenId The NFT token ID
-     */
-    function claimRedemption(uint256 tokenId) external {
-        uint48 requestedAt = redemptionRequest[tokenId];
-        if (requestedAt == 0) revert RedemptionNotRequested();
+    function _getOurTokenShare(uint256 tokenId) internal view returns (uint256) {
+        if (totalOurTokenForRedemption == 0) return 0;
+        (bool ok, bytes memory data) = googleStockNFT.staticcall(
+            abi.encodeWithSignature("mintPrincipal(uint256)", tokenId)
+        );
+        if (!ok) return 0;
+        uint256 principal = abi.decode(data, (uint256));
+        (bool ok2, bytes memory data2) = platformManager.staticcall(
+            abi.encodeWithSignature("totalMintPrincipal()")
+        );
+        if (!ok2) return 0;
+        uint256 totalPrincipal = abi.decode(data2, (uint256));
+        if (totalPrincipal == 0) return 0;
+        return (totalOurTokenForRedemption * principal) / totalPrincipal;
+    }
 
-        require(msg.sender == redemptionRequester[tokenId], "Not the requester");
-
-        uint48 availableAt = requestedAt + redemptionDelay;
-        if (block.timestamp < availableAt)
-            revert RedemptionTooEarly(availableAt);
-
-        uint256 shares = getShares(tokenId);
-        if (shares == 0) revert NothingToRedeem();
-
-        // Calculate fees
-        uint256 fee = (shares * REDEMPTION_FEE_BPS) / BPS_DENOMINATOR;
-        uint256 toUser = shares - fee;
-
-        // Reset state
-        nftShares[tokenId] = 0;
-        redemptionRequest[tokenId] = 0;
-
-        // Transfer GOOGLon
-        googlonToken.safeTransfer(msg.sender, toUser);
-        googlonToken.safeTransfer(feeRecipient, fee);
-
-        emit RedemptionClaimed(tokenId, msg.sender, toUser, fee);
+    /// @notice If both claims done, mark the NFT as soulbound (non-transferable collectible).
+    function _autoMarkSoulbound(uint256 tokenId) internal {
+        if (ourTokenClaimed[tokenId] && googlClaimed[tokenId]) {
+            // Best-effort: if this fails, NFT continues to be transferable
+            (bool ok, ) = googleStockNFT.call(
+                abi.encodeWithSignature("markSoulbound(uint256)", tokenId)
+            );
+            if (!ok) {} // silence unused warning
+        }
     }
 }

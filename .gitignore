@@ -1,8 +1,12 @@
 node_modules/
 .env
 .env.local
-deployed.json
+!*.example
+deployed*.json
 backend/data/
+**/.next/
+broadcast/
+.vscode/
 coverage/
 coverage.json
 typechain/
@@ -11,3 +15,4 @@ cache/
 artifacts/
 dist/
 *.log
+foundry.lock

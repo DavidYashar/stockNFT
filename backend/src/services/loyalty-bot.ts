@@ -26,7 +26,7 @@ const POLL_MS = parseInt(process.env.LOYALTY_POLL_MS || "180000", 10); // 3 min
 const CHAIN_ID = process.env.LOYALTY_CHAIN_ID || "1";
 // Only process transactions after this timestamp (unix seconds). Defaults to now on first start.
 const START_TIMESTAMP = parseInt(process.env.LOYALTY_START_TIMESTAMP || "0", 10);
-const ETHERSCAN_BASE = "https://api.etherscan.io/v2/api";
+const ETHERSCAN_BASE = process.env.EXPLORER_API_BASE_URL || "https://explorer.testnet.chain.robinhood.com/api";
 
 // Contracts whose ETH transfers to treasury are NOT loyalty fees
 function getBlocklist(): string[] {
@@ -34,7 +34,6 @@ function getBlocklist(): string[] {
     config.contracts.googleStockNFT,
     config.contracts.platformManager,
     config.contracts.stockVault,
-    config.contracts.interestDistributor,
   ].filter(Boolean).map(a => a.toLowerCase());
 }
 
@@ -107,23 +106,22 @@ async function recordOnChain(amountWei: bigint): Promise<boolean> {
   }
 }
 
-// ─── Etherscan API ───
+// ─── Explorer API (Blockscout — no API key required) ───
 
-async function fetchEtherscan(action: "txlist" | "txlistinternal", address: string): Promise<any[]> {
+async function fetchExplorer(action: "txlist" | "txlistinternal", address: string): Promise<any[]> {
   const apiKey = process.env.ETHERSCAN_API_KEY || "";
-  if (!apiKey) { console.log("  ⚠️ ETHERSCAN_API_KEY not set"); return []; }
-  const url = `${ETHERSCAN_BASE}?chainid=${CHAIN_ID}&module=account&action=${action}&address=${address}&page=1&offset=50&sort=desc&apikey=${apiKey}`;
+  const keyParam = apiKey ? `&apikey=${apiKey}` : "";
+  const url = `${ETHERSCAN_BASE}?chainid=${CHAIN_ID}&module=account&action=${action}&address=${address}&page=1&offset=50&sort=desc${keyParam}`;
   try {
     const res = await fetch(url);
     const json = await res.json();
     if (json.status === "1" && Array.isArray(json.result)) return json.result;
     if (json.status === "0" && (json.message?.includes("No transactions") || (Array.isArray(json.result) && json.result.length === 0))) return [];
-    // Skip logging for transient server errors
     if (json.message?.includes("timeout") || json.message?.includes("too busy")) return [];
-    console.log(`  ⚠️ Etherscan ${action}: ${json.message || JSON.stringify(json.result)}`);
+    console.log(`  ⚠️ Explorer ${action}: ${json.message || JSON.stringify(json.result)}`);
     return [];
   } catch (err: any) {
-    console.log(`  ⚠️ Etherscan fetch failed: ${err.message?.slice(0, 60)}`);
+    console.log(`  ⚠️ Explorer fetch failed: ${err.message?.slice(0, 60)}`);
     return [];
   }
 }
@@ -139,8 +137,8 @@ async function scanForLoyaltyFees() {
 
   // Fetch both direct and internal transfers
   const [directTxs, internalTxs] = await Promise.all([
-    fetchEtherscan("txlist", treasuryAddr),
-    fetchEtherscan("txlistinternal", treasuryAddr),
+    fetchExplorer("txlist", treasuryAddr),
+    fetchExplorer("txlistinternal", treasuryAddr),
   ]);
 
   // Merge and dedup by txHash

@@ -40,10 +40,13 @@ export function AppHeader() {
   const pathname = usePathname();
   const { address } = useAccount();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const deployerAddr = ADDRESSES.treasury?.toLowerCase();
   const treasuryAddr = ADDRESSES.treasury?.toLowerCase();
-  const userAddr = address?.toLowerCase();
+  // Only use connected address after client mount to avoid hydration mismatch
+  const userAddr = mounted ? address?.toLowerCase() : undefined;
 
   const showAdmin = !!(userAddr && (userAddr === deployerAddr || userAddr === treasuryAddr));
 
