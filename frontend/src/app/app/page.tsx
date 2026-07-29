@@ -438,6 +438,15 @@ export default function AppPage() {
     return () => clearInterval(iv);
   }, [address, mounted, portfolioRefresh]);
 
+  // ── Admin detection — env-only, no on-chain needed ──
+  useEffect(() => {
+    if (!mounted || !address) { setIsAdmin(false); return; }
+    const treasuryVal = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").toLowerCase();
+    const deployerVal = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").toLowerCase();
+    const addrLower = address.toLowerCase();
+    setIsAdmin(addrLower === treasuryVal || addrLower === deployerVal);
+  }, [address, mounted]);
+
   // ── Tier detection — reads PlatformManager + GoogleStockNFT directly via RPC ──
   useEffect(() => {
     if (!mounted) return;
@@ -449,16 +458,10 @@ export default function AppPage() {
         const rootVal = await nftContract.current.whitelistRoot();
         const ownerVal = await pmContract.current.owner();
 
-        if (!cancelled && address) {
-          const treasuryVal = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").toLowerCase();
-          const deployerVal = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").toLowerCase();
-          const ownerLower = (ownerVal || "").toLowerCase();
-          const addrLower = address.toLowerCase();
-          setIsAdmin(
-            addrLower === ownerLower ||
-            addrLower === treasuryVal ||
-            addrLower === deployerVal
-          );
+        // Also check on-chain owner for admin
+        if (!cancelled && address && ownerVal) {
+          const ownerLower = ownerVal.toLowerCase();
+          if (address.toLowerCase() === ownerLower) setIsAdmin(true);
         }
 
         if (!address || cancelled) {
