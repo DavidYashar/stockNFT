@@ -19,8 +19,13 @@ export interface SubmittedEntry {
 
 const SUBMIT_PATH = path.join(__dirname, "..", "..", "data", "whitelist-submitted.json");
 
+function ensureDir(filePath: string) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
 function readSubmissions(): SubmittedEntry[] {
-  try { return JSON.parse(fs.readFileSync(SUBMIT_PATH, "utf8")); }
+  try { ensureDir(SUBMIT_PATH); return JSON.parse(fs.readFileSync(SUBMIT_PATH, "utf8")); }
   catch { return []; }
 }
 
