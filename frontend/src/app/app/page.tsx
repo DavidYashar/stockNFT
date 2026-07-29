@@ -235,7 +235,10 @@ export default function AppPage() {
     async function fetch() {
       try {
         const [phase, count, start, root, ended] = await Promise.all([
-          pm.mintPhase(), nft.wlMintCount(), nft.whitelistStartTime(), nft.whitelistRoot(),
+          pm.mintPhase().catch(() => 0n),
+          nft.wlMintCount().catch(() => 0n),
+          nft.whitelistStartTime().catch(() => 0n),
+          nft.whitelistRoot().catch(() => "0x0000000000000000000000000000000000000000000000000000000000000000"),
           pm.mintEnded().catch(() => false),
         ]);
         setAdminPhase(Number(phase));
@@ -246,17 +249,17 @@ export default function AppPage() {
         // V3: TreasuryVault reads
         if (!tvContract) return;
         const [p80, p20, pFLP, uFLP, lpc, mc, tpfa, tgh, pco, pclo, gclo] = await Promise.all([
-          tvContract.pool80(),
-          tvContract.pool20(),
-          tvContract.pileForLP(),
-          tvContract.usdgForLP(),
-          tvContract.lpCreated(),
+          tvContract.pool80().catch(() => 0n),
+          tvContract.pool20().catch(() => 0n),
+          tvContract.pileForLP().catch(() => 0n),
+          tvContract.usdgForLP().catch(() => 0n),
+          tvContract.lpCreated().catch(() => false),
           tvContract.getMarketCap().catch(() => [0n,0n]),
-          tvContract.totalPileForAirdrop(),
-          tvContract.totalGooglHeld(),
-          tvContract.purchaseComplete(),
-          tvContract.pileClaimsOpen(),
-          tvContract.googlClaimsOpen(),
+          tvContract.totalPileForAirdrop().catch(() => 0n),
+          tvContract.totalGooglHeld().catch(() => 0n),
+          tvContract.purchaseComplete().catch(() => false),
+          tvContract.pileClaimsOpen().catch(() => false),
+          tvContract.googlClaimsOpen().catch(() => false),
         ]);
         setPool80Val(ethers.formatUnits(p80, 6));
         setPool20Val(ethers.formatUnits(p20, 6));
