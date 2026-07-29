@@ -10,9 +10,6 @@ const nextConfig = {
     };
     return config;
   },
-  turbopack: {
-    root: __dirname,
-  },
   async rewrites() {
     return [
       { source: "/", destination: "/index.html" },
