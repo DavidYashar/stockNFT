@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx next build --webpack",
+    "build": "npx next build",
     "start": "npx next start"
   },
   "dependencies": {
