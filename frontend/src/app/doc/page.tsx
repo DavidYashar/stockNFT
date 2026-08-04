@@ -335,6 +335,12 @@ export default function DocPage() {
             </details>
 
             <details className="doc-faq">
+              <summary>Do I get dividends or voting rights?</summary>
+              <p><strong>Voting rights:</strong> No. GOOGL tokens are tokenised debt securities, not equity shares — you get economic exposure, not a seat at shareholder meetings.</p>
+              <p><strong>Dividends:</strong> Handled automatically on-chain. When Google pays a dividend, the token&apos;s shares-per-token ratio adjusts upward via the <code>uiMultiplier()</code> mechanism. Your token silently accrues more underlying value — no claim button, no cash deposit. You realize the accumulated value when you sell or redeem.</p>
+            </details>
+
+            <details className="doc-faq">
               <summary>Is this audited?</summary>
               <p>Our contracts are built on OpenZeppelin&apos;s audited libraries. A full security audit report is available upon request.</p>
             </details>
