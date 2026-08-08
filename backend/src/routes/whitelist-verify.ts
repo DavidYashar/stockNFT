@@ -12,6 +12,13 @@ import { submitWhitelist, getSubmission, getAllSubmissions, isDuplicate } from "
 const TWITTER_URL_RE = /^https?:\/\/(x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+/;
 const TWITTER_USERNAME_RE = /^@?[a-zA-Z0-9_]{1,15}$/;
 
+// Deadline check — set WL_DEADLINE env (ISO string, e.g. "2026-08-08T19:00:00Z")
+function isWhitelistOpen(): boolean {
+  const deadline = process.env.WL_DEADLINE;
+  if (!deadline) return true; // no deadline set = always open
+  return new Date() < new Date(deadline);
+}
+
 function sendJson(res: http.ServerResponse, code: number, data: any) {
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
@@ -50,6 +57,12 @@ export async function handleWhitelistRoutes(
 
   // ---- POST /api/whitelist/submit ----
   if (pathname === "/api/whitelist/submit" && req.method === "POST") {
+    // Check deadline
+    if (!isWhitelistOpen()) {
+      sendJson(res, 410, { error: "Whitelist submissions are closed." });
+      return true;
+    }
+
     const body = await parseBody(req);
     const { twitterUsername, retweetUrl, tweetUrl, walletAddress } = body;
 
@@ -123,6 +136,12 @@ export async function handleWhitelistRoutes(
     }
     const sub = getSubmission(address);
     sendJson(res, 200, sub ? { submitted: true, ...sub } : { submitted: false });
+    return true;
+  }
+
+  // ---- GET /api/whitelist/status ----
+  if (pathname === "/api/whitelist/status" && req.method === "GET") {
+    sendJson(res, 200, { open: isWhitelistOpen(), deadline: process.env.WL_DEADLINE || null });
     return true;
   }
 

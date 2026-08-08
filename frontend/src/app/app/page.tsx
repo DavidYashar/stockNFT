@@ -195,12 +195,22 @@ export default function AppPage() {
   const [wlTweetUrl, setWlTweetUrl] = useState("");
   const [wlSubmitted, setWlSubmitted] = useState(false);
   const [wlSubmitting, setWlSubmitting] = useState(false);
+  const [wlOpen, setWlOpen] = useState(true); // server says open until proven closed
   const [appUnlocked, setAppUnlocked] = useState(false); // admin toggle to show mint + portfolio
   const [wlTweetId] = useState(process.env.NEXT_PUBLIC_TWITTER_TWEET_ID || "2081218513512083852");
   const [wlFollowAccount] = useState(process.env.NEXT_PUBLIC_TWITTER_FOLLOW_ACCOUNT || "naiivememe");
   const WL_API = process.env.NEXT_PUBLIC_BACKEND_API || ""; // empty = same origin (proxy handles it)
 
   useEffect(() => setMounted(true), []);
+
+  // Check whitelist status from backend on mount
+  useEffect(() => {
+    if (!mounted) return;
+    fetch(`${WL_API}/api/whitelist/status`)
+      .then(r => r.json())
+      .then(d => { if (!d.open) setWlOpen(false); })
+      .catch(() => {}); // if server is down, default to open
+  }, [mounted]);
 
   // Redirect to whitelist if app is locked and user lands on a hidden tab
   useEffect(() => {
@@ -1149,6 +1159,12 @@ export default function AppPage() {
                 <span className="material-icons-round placeholder-icon">wallet</span>
                 <h2>Connect Your Wallet</h2>
                 <p>Connect your wallet to join the whitelist.</p>
+              </div>
+            ) : !wlOpen ? (
+              <div className="placeholder-card">
+                <span className="material-icons-round placeholder-icon" style={{fontSize:48,opacity:0.6}}>lock</span>
+                <h2 style={{color:"var(--text-muted)"}}>Whitelist Closed</h2>
+                <p>The submission period has ended. Thank you to everyone who participated!</p>
               </div>
             ) : wlSubmitted ? (
               <div className="placeholder-card">
