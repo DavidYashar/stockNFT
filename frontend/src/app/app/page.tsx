@@ -28,7 +28,7 @@ interface PortfolioNFT {
 const TABS = [
   { id: "mint", label: "Mint", icon: "add_circle", badge: "New" },
   { id: "portfolio", label: "Portfolio", icon: "account_balance_wallet" },
-  { id: "whitelist", label: "Whitelist", icon: "checklist" },
+  { id: "wlcheck", label: "WL Checker", icon: "verified" },
   { id: "admin", label: "Admin", icon: "admin_panel_settings" },
 ];
 
@@ -69,7 +69,7 @@ function WalletButton() {
 
 export default function AppPage() {
   const { address } = useAccount();
-  const [activeTab, setActiveTab] = useState("whitelist");
+  const [activeTab, setActiveTab] = useState("wlcheck");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -189,33 +189,43 @@ export default function AppPage() {
   const [sendUsdgTo, setSendUsdgTo] = useState("");
   const [sendUsdgAmount, setSendUsdgAmount] = useState("");
   const [sendUsdgLabel, setSendUsdgLabel] = useState("");
-  // ── Whitelist state ──
-  const [wlTwitterUsername, setWlTwitterUsername] = useState("");
-  const [wlRetweetUrl, setWlRetweetUrl] = useState("");
-  const [wlTweetUrl, setWlTweetUrl] = useState("");
-  const [wlSubmitted, setWlSubmitted] = useState(false);
-  const [wlSubmitting, setWlSubmitting] = useState(false);
-  const [wlOpen, setWlOpen] = useState(true); // server says open until proven closed
   const [appUnlocked, setAppUnlocked] = useState(false); // admin toggle to show mint + portfolio
-  const [wlTweetId] = useState(process.env.NEXT_PUBLIC_TWITTER_TWEET_ID || "2081218513512083852");
-  const [wlFollowAccount] = useState(process.env.NEXT_PUBLIC_TWITTER_FOLLOW_ACCOUNT || "naiivememe");
-  const WL_API = process.env.NEXT_PUBLIC_BACKEND_API || ""; // empty = same origin (proxy handles it)
+
+  // ── WL Checker state ──
+  const [wlCheckResult, setWlCheckResult] = useState<"loading" | "GTD" | "FCFS" | "none">("loading");
+  const [wlCheckAddr, setWlCheckAddr] = useState("");
 
   useEffect(() => setMounted(true), []);
 
-  // Check whitelist status from backend on mount
+  // ── WL Checker: load proofs + check address ──
   useEffect(() => {
-    if (!mounted) return;
-    fetch(`${WL_API}/api/whitelist/status`)
-      .then(r => r.json())
-      .then(d => { if (!d.open) setWlOpen(false); })
-      .catch(() => {}); // if server is down, default to open
-  }, [mounted]);
+    if (!mounted || !address) { setWlCheckResult("loading"); return; }
+    const addr = address.toLowerCase();
+    if (addr === wlCheckAddr) return; // already checked this address
+    setWlCheckAddr(addr);
+    setWlCheckResult("loading");
 
-  // Redirect to whitelist if app is locked and user lands on a hidden tab
+    (async () => {
+      try {
+        const [gtdRes, fcfsRes] = await Promise.all([
+          fetch("/data/gtd-merkle.json"),
+          fetch("/data/fcfs-merkle.json"),
+        ]);
+        const gtd = await gtdRes.json();
+        const fcfs = await fcfsRes.json();
+        if (gtd.proofs[addr]) { setWlCheckResult("GTD"); return; }
+        if (fcfs.proofs[addr]) { setWlCheckResult("FCFS"); return; }
+        setWlCheckResult("none");
+      } catch {
+        setWlCheckResult("none");
+      }
+    })();
+  }, [address, mounted]);
+
+  // Redirect if app is locked and user lands on a hidden tab
   useEffect(() => {
-    if (!appUnlocked && activeTab !== "whitelist" && activeTab !== "admin") {
-      setActiveTab("whitelist");
+    if (!appUnlocked && activeTab !== "admin" && activeTab !== "mint" && activeTab !== "portfolio" && activeTab !== "wlcheck") {
+      setActiveTab("mint");
     }
   }, [appUnlocked, activeTab]);
 
@@ -611,50 +621,6 @@ export default function AppPage() {
     }
   };
 
-  // ── Whitelist: Submit ──
-  const handleWlSubmit = async () => {
-    if (!address) { toast.warning("Connect wallet first"); return; }
-    if (!wlTwitterUsername.trim()) { toast.warning("Enter your Twitter username"); return; }
-    if (!wlRetweetUrl.trim()) { toast.warning("Paste your retweet link"); return; }
-    if (!wlTweetUrl.trim()) { toast.warning("Paste your tweet link"); return; }
-    setWlSubmitting(true);
-    try {
-      const res = await fetch(`${WL_API}/api/whitelist/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          twitterUsername: wlTwitterUsername.trim(),
-          retweetUrl: wlRetweetUrl.trim(),
-          tweetUrl: wlTweetUrl.trim(),
-          walletAddress: address,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setWlSubmitted(true);
-        toast.success("Submitted! You're on the whitelist. 🎉");
-      } else {
-        toast.error(data.error || "Submit failed");
-      }
-    } catch {
-      toast.error("Submit failed — is backend running?");
-    } finally {
-      setWlSubmitting(false);
-    }
-  };
-
-  // ── Whitelist: Load submission status on mount ──
-  useEffect(() => {
-    if (!address || !mounted) return;
-    (async () => {
-      try {
-        const res = await fetch(`${WL_API}/api/whitelist/submission?address=${address}`);
-        const data = await res.json();
-        if (res.ok && data.submitted) setWlSubmitted(true);
-      } catch {}
-    })();
-  }, [address, mounted]);
-
   // ── Price fetching ──
   useEffect(() => {
     const fetchPrice = async () => {
@@ -785,7 +751,7 @@ export default function AppPage() {
         <nav className="sidebar-nav">
           {TABS.filter(t => {
             if (t.id === "admin") return isAdmin;
-            if (!appUnlocked) return t.id === "whitelist";
+            if (!appUnlocked && (t.id === "mint" || t.id === "portfolio")) return false;
             return true;
           }).map(tab => (
             <button
@@ -1147,86 +1113,38 @@ export default function AppPage() {
           )}
         </section>
 
-        {/* ─── Whitelist Tab ─── */}
-        <section className={`app-page${activeTab === "whitelist" ? " active" : ""}`} id="page-whitelist">
+        {/* ─── WL Checker Tab ─── */}
+        <section className={`app-page${activeTab === "wlcheck" ? " active" : ""}`} id="page-wlcheck">
           <div className="page-header">
-            <h1>Whitelist</h1>
-            <p>Submit your details for early-access minting (4 USDG per share). Verification is manual after submission period ends.</p>
+            <h1>WL Checker</h1>
+            <p>Check if your wallet is on the whitelist.</p>
           </div>
           <div className="page-body">
             {!address ? (
               <div className="placeholder-card">
-                <span className="material-icons-round placeholder-icon">wallet</span>
                 <h2>Connect Your Wallet</h2>
-                <p>Connect your wallet to join the whitelist.</p>
+                <p>Connect to check your whitelist status.</p>
               </div>
-            ) : !wlOpen ? (
+            ) : wlCheckResult === "loading" ? (
               <div className="placeholder-card">
-                <span className="material-icons-round placeholder-icon" style={{fontSize:48,opacity:0.6}}>lock</span>
-                <h2 style={{color:"var(--text-muted)"}}>Whitelist Closed</h2>
-                <p>The submission period has ended. Thank you to everyone who participated!</p>
+                <h2>Checking...</h2>
+                <p>Looking up your address in the whitelist.</p>
               </div>
-            ) : wlSubmitted ? (
+            ) : wlCheckResult === "GTD" ? (
               <div className="placeholder-card">
-                <h2 style={{color:"#9edd3e"}}>Submitted!</h2>
-                <p>Your details have been received. We'll verify after the submission period ends.</p>
+                <h2 style={{color:"#9edd3e"}}>Whitelisted — GTD</h2>
+                <p>You have a <strong>guaranteed spot</strong>. Mint at <strong>4 USDG</strong> during the GTD phase.</p>
+              </div>
+            ) : wlCheckResult === "FCFS" ? (
+              <div className="placeholder-card">
+                <h2 style={{color:"#4285F4"}}>Whitelisted — FCFS</h2>
+                <p><strong>First Come, First Served</strong>. Mint at <strong>4 USDG</strong> during the FCFS phase. First 1,500 combined WL mints get in.</p>
               </div>
             ) : (
-              <div className="wl-container">
-                <div className="wl-card">
-                  <div className="wl-card-header">
-                    <span className="wl-step-badge">1</span>
-                    <h3>Whitelist Submission</h3>
-                  </div>
-                  <p style={{color:"var(--text-muted)",fontSize:13,margin:"0 0 16px 0"}}>
-                    Complete these steps on Twitter, then paste the links below and submit.
-                  </p>
-
-                  {/* Instructions */}
-                  <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"12px 16px",marginBottom:16,fontSize:13,color:"var(--text-secondary)",lineHeight:1.8}}>
-                    <p style={{margin:"0 0 8px 0",fontWeight:600,color:"var(--text-primary)"}}>📋 Steps:</p>
-                    <p style={{margin:"2px 0"}}>1. Follow <a href={`https://x.com/${wlFollowAccount}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>@{wlFollowAccount}</a></p>
-                    <p style={{margin:"2px 0"}}>2. Like &amp; Retweet <a href={`https://x.com/${wlFollowAccount}/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
-                    <p style={{margin:"2px 0"}}>3. Comment on <a href={`https://x.com/${wlFollowAccount}/status/${wlTweetId}`} target="_blank" rel="noopener noreferrer" style={{color:"var(--color-primary)"}}>this tweet</a></p>
-                    <p style={{margin:"2px 0"}}>4. Post this exact tweet:</p>
-                    <code style={{display:"block",padding:"6px 10px",background:"rgba(0,0,0,0.3)",borderRadius:4,fontSize:12,margin:"4px 0"}}>
-                      Just secured my WL with @StocksNFT_ on Robinhood. Officially joining the true stock NFT movement.
-                    </code>
-                    <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent("Just secured my WL with @StocksNFT_ on Robinhood. Officially joining the true stock NFT movement.")}`} target="_blank" rel="noopener noreferrer"
-                      style={{display:"inline-block",marginTop:6,color:"var(--color-primary)",fontWeight:600,fontSize:12}}>
-                      ↗ Click to tweet this
-                    </a>
-                  </div>
-
-                  {/* Form */}
-                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                    <div>
-                      <label style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4}}>Twitter Username</label>
-                      <input className="wl-input" placeholder="@yourhandle" value={wlTwitterUsername}
-                        onChange={e => setWlTwitterUsername(e.target.value)} />
-                    </div>
-                    <div>
-                      <label style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4}}>Your Retweet Link</label>
-                      <input className="wl-input" placeholder="https://x.com/yourhandle/status/..." value={wlRetweetUrl}
-                        onChange={e => setWlRetweetUrl(e.target.value)} />
-                    </div>
-                    <div>
-                      <label style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4}}>Your Tweet Link</label>
-                      <input className="wl-input" placeholder="https://x.com/yourhandle/status/..." value={wlTweetUrl}
-                        onChange={e => setWlTweetUrl(e.target.value)} />
-                    </div>
-                    <div>
-                      <label style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4}}>Wallet Address</label>
-                      <input className="wl-input" value={address} readOnly
-                        style={{opacity:0.6,cursor:"not-allowed"}} />
-                    </div>
-
-                    <button className="btn-admin" onClick={handleWlSubmit} disabled={wlSubmitting}
-                      style={{background:"var(--color-primary)",color:"#000",fontWeight:700,fontSize:15,padding:"12px 24px",marginTop:8}}>
-                      {wlSubmitting ? "Submitting..." : "📝 Submit Whitelist Entry"}
-                    </button>
-                  </div>
-                </div>
+              <div className="placeholder-card">
+                <span className="material-icons-round placeholder-icon" style={{color:"var(--text-muted)",opacity:0.5}}>cancel</span>
+                <h2 style={{color:"var(--text-muted)"}}>Not Whitelisted</h2>
+                <p>Your address was not found on the whitelist. You can still mint during the <strong>Public phase</strong> at 6 USDG.</p>
               </div>
             )}
           </div>
