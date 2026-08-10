@@ -1208,19 +1208,19 @@ export default function AppPage() {
                     <span>Pool 20: <strong>{pool20Val} USDG</strong></span>
                   </div>
                   <div className="admin-actions">
-                    <button className="btn-admin" disabled={!!adminBusy || adminPhase !== 0}
+                    <button className="btn-admin" disabled={!!adminBusy || (adminPhase ?? 0) !== 0}
                       onClick={() => doAdmin("Open GTD", PM_ADDR, [{type:"function",name:"openGTD",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openGTD")}>
                       {adminBusy === "Open GTD" ? "..." : "Open GTD"}
                     </button>
-                    <button className="btn-admin" disabled={!!adminBusy || adminPhase !== 1}
+                    <button className="btn-admin" disabled={!!adminBusy || (adminPhase ?? 0) !== 1}
                       onClick={() => doAdmin("Open FCFS", PM_ADDR, [{type:"function",name:"openFCFS",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openFCFS")}>
                       {adminBusy === "Open FCFS" ? "..." : "Open FCFS"}
                     </button>
-                    <button className="btn-admin" disabled={!!adminBusy || adminPhase !== 2}
+                    <button className="btn-admin" disabled={!!adminBusy || (adminPhase ?? 0) !== 2}
                       onClick={() => doAdmin("Open Public", PM_ADDR, [{type:"function",name:"openPublic",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openPublic")}>
                       {adminBusy === "Open Public" ? "..." : "Open Public"}
                     </button>
-                    <button className="btn-admin" disabled={!!adminBusy || adminPhase === 3 || adminPhase === 0}
+                    <button className="btn-admin" disabled={!!adminBusy || (adminPhase ?? 0) === 3 || (adminPhase ?? 0) === 0}
                       onClick={() => doAdmin("End Mint", PM_ADDR, [{type:"function",name:"endMint",inputs:[],outputs:[],stateMutability:"nonpayable"}], "endMint")}>
                       {adminBusy === "End Mint" ? "..." : "End Mint"}
                     </button>
