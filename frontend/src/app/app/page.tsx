@@ -101,9 +101,10 @@ export default function AppPage() {
     "function owner() view returns (address)",
   ], readProvider.current));
 
-  // whitelistRoot is on GoogleStockNFT, NOT PlatformManager
+  // Merkle roots are on GoogleStockNFT
   const nftContract = useRef(new ethers.Contract(NFT_ADDR, [
-    "function whitelistRoot() view returns (bytes32)",
+    "function gtdRoot() view returns (bytes32)",
+    "function fcfsRoot() view returns (bytes32)",
     "function balanceOf(address) view returns (uint256)",
     "function tokenOfOwnerByIndex(address,uint256) view returns (uint256)",
     "function mintPrincipal(uint256) view returns (uint256)",
@@ -152,10 +153,12 @@ export default function AppPage() {
   const [mintPhaseNum, setMintPhaseNum] = useState<number>(0); // 0=NONE,1=WL,2=PUBLIC,3=ENDED
   const [wlAlreadyMinted, setWlAlreadyMinted] = useState(false);
   const [mintIsActive, setMintIsActive] = useState(true);
-  const [wlCount, setWlCount] = useState<number | null>(null);
-  const [wlStartTime, setWlStartTime] = useState<number | null>(null);
-  const [wlRoot, setWlRoot] = useState<string>("");
-  const [wlRootInput, setWlRootInput] = useState("");
+  const [gtdMinted, setGtdMinted] = useState<number>(0);
+  const [fcfsMinted, setFcfsMinted] = useState<number>(0);
+  const [gtdRoot, setGtdRoot] = useState<string>("");
+  const [gtdRootInput, setGtdRootInput] = useState("");
+  const [fcfsRootVal, setFcfsRootVal] = useState<string>("");
+  const [fcfsRootInput, setFcfsRootInput] = useState("");
   const [adminBusy, setAdminBusy] = useState<string | null>(null);
 
   // ── V3 Admin: LP ──
@@ -222,12 +225,12 @@ export default function AppPage() {
     })();
   }, [address, mounted]);
 
-  // Redirect if app is locked and user lands on a hidden tab
+  // Redirect non-admin users away from admin tab
   useEffect(() => {
-    if (!appUnlocked && activeTab !== "admin" && activeTab !== "mint" && activeTab !== "portfolio" && activeTab !== "wlcheck") {
-      setActiveTab("mint");
+    if (!isAdmin && activeTab === "admin") {
+      setActiveTab("wlcheck");
     }
-  }, [appUnlocked, activeTab]);
+  }, [isAdmin, activeTab]);
 
   // ── Fetch totalSupply ──
   useEffect(() => {
@@ -247,24 +250,27 @@ export default function AppPage() {
       "function mintPhase() view returns (uint8)",
     ], readProvider.current);
     const nft = new ethers.Contract(NFT_ADDR, [
-      "function wlMintCount() view returns (uint256)",
-      "function whitelistStartTime() view returns (uint256)",
-      "function whitelistRoot() view returns (bytes32)",
+      "function gtdMintCount() view returns (uint256)",
+      "function fcfsMintCount() view returns (uint256)",
+      "function gtdRoot() view returns (bytes32)",
+      "function fcfsRoot() view returns (bytes32)",
       "function WL_CAP() view returns (uint256)",
     ], readProvider.current);
     async function fetch() {
       try {
-        const [phase, count, start, root, ended] = await Promise.all([
+        const [phase, gMinted, fMinted, gRoot, fRoot, ended] = await Promise.all([
           pm.mintPhase().catch(() => 0n),
-          nft.wlMintCount().catch(() => 0n),
-          nft.whitelistStartTime().catch(() => 0n),
-          nft.whitelistRoot().catch(() => "0x0000000000000000000000000000000000000000000000000000000000000000"),
+          nft.gtdMintCount().catch(() => 0n),
+          nft.fcfsMintCount().catch(() => 0n),
+          nft.gtdRoot().catch(() => "0x0000000000000000000000000000000000000000000000000000000000000000"),
+          nft.fcfsRoot().catch(() => "0x0000000000000000000000000000000000000000000000000000000000000000"),
           pm.mintEnded().catch(() => false),
         ]);
         setAdminPhase(Number(phase));
-        setWlCount(Number(count));
-        setWlStartTime(Number(start));
-        setWlRoot(root);
+        setGtdMinted(Number(gMinted));
+        setFcfsMinted(Number(fMinted));
+        setGtdRoot(gRoot);
+        setFcfsRootVal(fRoot);
         setMintEnded(ended);
         // V3: TreasuryVault reads
         if (!tvContract) return;
@@ -487,7 +493,7 @@ export default function AppPage() {
     return () => { cancelled = true; };
   }, [address, mounted]);
 
-  // ── Tier detection — reads PlatformManager + GoogleStockNFT directly via RPC ──
+  // ── Tier detection — reads phase from PM + checks Merkle proof from local JSON ──
   useEffect(() => {
     if (!mounted) return;
     let cancelled = false;
@@ -495,13 +501,10 @@ export default function AppPage() {
     async function detect() {
       try {
         const phaseVal = await pmContract.current.mintPhase();
-        const rootVal = await nftContract.current.whitelistRoot();
         const ownerVal = await pmContract.current.owner();
 
-        // Also check on-chain owner for admin
         if (!cancelled && address && ownerVal) {
-          const ownerLower = ownerVal.toLowerCase();
-          if (address.toLowerCase() === ownerLower) setIsAdmin(true);
+          if (address.toLowerCase() === ownerVal.toLowerCase()) setIsAdmin(true);
         }
 
         if (!address || cancelled) {
@@ -517,7 +520,7 @@ export default function AppPage() {
         setMintPhaseNum(phaseNum);
 
         // Check if already minted WL
-        if (address && phaseNum === 1) {
+        if (address && (phaseNum === 1 || phaseNum === 2)) {
           try {
             const alreadyMinted = await nftContract.current.wlMinted(address);
             if (!cancelled) setWlAlreadyMinted(alreadyMinted);
@@ -532,52 +535,81 @@ export default function AppPage() {
           if (!cancelled) setMintIsActive(active);
         } catch {}
 
-        if (cancelled) return;
-
+        // Determine tier based on phase + Merkle proof
         if (phaseNum === 1) {
-          if (rootVal && rootVal !== ethers.ZeroHash) {
-            // Contract uses keccak256(abi.encodePacked(address)) — 20 address bytes, NOT hex string
-            const userLeaf = ethers.solidityPackedKeccak256(["address"], [address]);
-            const isWL = userLeaf.toLowerCase() === rootVal.toLowerCase();
-            setActiveTier(isWL ? "whitelist" : "public");
-            setTierLabel(isWL ? "Whitelist · 4 USDG/share" : "Not Whitelisted · Public Phase");
-            setTierLabelColor(isWL ? "var(--color-primary)" : "#E04040");
-          } else {
-            setActiveTier("public");
-            setTierLabel("Public · 6 USDG/share");
-            setTierLabelColor("var(--text-primary)");
+          // GTD phase — check GTD Merkle proof
+          const inGtd = await checkMerkleMembership(address, "GTD");
+          if (!cancelled) {
+            if (inGtd) {
+              setTierLabel("GTD · 4 USDG"); setTierLabelColor("#9edd3e"); setActiveTier("whitelist");
+            } else {
+              setTierLabel("Not in GTD list"); setTierLabelColor("#e04040"); setActiveTier("public");
+            }
           }
         } else if (phaseNum === 2) {
-          setActiveTier("public");
-          setTierLabel("Public · 6 USDG/share");
-          setTierLabelColor("var(--text-primary)");
+          // FCFS phase — check FCFS Merkle proof
+          const inFcfs = await checkMerkleMembership(address, "FCFS");
+          if (!cancelled) {
+            if (inFcfs) {
+              setTierLabel("FCFS · 4 USDG"); setTierLabelColor("#4285F4"); setActiveTier("whitelist");
+            } else {
+              setTierLabel("Not in FCFS list"); setTierLabelColor("#e04040"); setActiveTier("public");
+            }
+          }
+        } else if (phaseNum === 3) {
+          if (!cancelled) { setTierLabel("Public · 6 USDG"); setTierLabelColor("var(--text-secondary)"); setActiveTier("public"); }
         } else {
-          setTierLabel("Mint not active");
-          setTierLabelColor("var(--text-muted)");
+          if (!cancelled) { setTierLabel("Mint not open"); setTierLabelColor("var(--text-muted)"); setActiveTier("public"); }
         }
-      } catch (err: any) {
-        if (!cancelled) console.warn("Tier detection failed:", err.message?.slice(0, 80));
+      } catch (err) {
+        console.warn("Tier detection failed:", (err as Error).message);
+        if (!cancelled) { setTierLabel("Connect wallet to see your tier"); setTierLabelColor("var(--text-muted)"); setActiveTier("public"); }
       }
     }
-
     detect();
     return () => { cancelled = true; };
   }, [address, mounted]);
+
+  // ── Helper: check if address is in GTD or FCFS Merkle tree ──
+  const checkMerkleMembership = async (addr: string, tier: "GTD" | "FCFS"): Promise<boolean> => {
+    try {
+      const file = tier === "GTD" ? "/data/gtd-merkle.json" : "/data/fcfs-merkle.json";
+      const res = await fetch(file);
+      const data = await res.json();
+      return !!data.proofs[addr.toLowerCase()];
+    } catch { return false; }
+  };
 
   // ── Mint: uses wagmi (same wallet RainbowKit connected) ──
   const { writeContractAsync } = useWriteContract();
 
   const handleMint = async () => {
     if (!address) { toast.warning("Connect wallet first"); return; }
-    if (mintPhaseNum === 1 && activeTier !== "whitelist") { toast.warning("Not whitelisted — WL phase requires Merkle proof"); return; }
-    if (mintPhaseNum === 1 && wlAlreadyMinted) { toast.warning("Already minted during WL — limit 1 per wallet"); return; }
-    if (mintPhaseNum === 0 || mintPhaseNum === 3) { toast.warning("Mint is not active"); return; }
+    if ((mintPhaseNum === 1 || mintPhaseNum === 2) && activeTier !== "whitelist") { toast.warning("Not whitelisted — WL phase requires Merkle proof"); return; }
+    if ((mintPhaseNum === 1 || mintPhaseNum === 2) && wlAlreadyMinted) { toast.warning("Already minted during WL — limit 1 per wallet"); return; }
+    if (mintPhaseNum === 0 || mintPhaseNum === 4) { toast.warning("Mint is not active"); return; }
     if (!googlePrice || googlePrice === "198.45") { toast.info("Waiting for live GOOGL price..."); return; }
 
     setMintLoading(true);
     try {
       const usdgAmount = BigInt(TIER_PRICES[activeTier] * 1_000_000); // 1 NFT = fixed price
       const googlPriceParsed = ethers.parseUnits(googlePrice, 8);
+
+      // Fetch Merkle proof for WL phases
+      let merkleProof: string[] = [];
+      if (mintPhaseNum === 1) {
+        // GTD phase — need GTD proof
+        const res = await fetch("/data/gtd-merkle.json");
+        const gtd = await res.json();
+        merkleProof = gtd.proofs[address.toLowerCase()] || [];
+        if (merkleProof.length === 0) { toast.error("Merkle proof not found — are you on the GTD list?"); setMintLoading(false); return; }
+      } else if (mintPhaseNum === 2) {
+        // FCFS phase — need FCFS proof
+        const res = await fetch("/data/fcfs-merkle.json");
+        const fcfs = await res.json();
+        merkleProof = fcfs.proofs[address.toLowerCase()] || [];
+        if (merkleProof.length === 0) { toast.error("Merkle proof not found — are you on the FCFS list?"); setMintLoading(false); return; }
+      }
 
       // Step 1: Approve USDG
       const approveHash = await writeContractAsync({
@@ -588,12 +620,12 @@ export default function AppPage() {
       });
       await readProvider.current.waitForTransaction(approveHash);
 
-      // Step 2: Mint
+      // Step 2: Mint with Merkle proof (GOOGL price from oracle, fallback to API price)
       const mintHash = await writeContractAsync({
         address: NFT_ADDR as `0x${string}`,
         abi: [{ type: "function", name: "mint", inputs: [{ type: "uint256" }, { type: "bytes32[]" }], outputs: [{ type: "uint256" }], stateMutability: "nonpayable" }],
         functionName: "mint",
-        args: [googlPriceParsed, []],
+        args: [googlPriceParsed, merkleProof as `0x${string}`[]],
       });
       const receipt = await readProvider.current.waitForTransaction(mintHash);
       if (!receipt) { toast.error("Transaction not found"); setMintLoading(false); return; }
@@ -718,10 +750,11 @@ export default function AppPage() {
   // ── Computed mint status badge ──
   const mintStatusBadge = (() => {
     if (mintPhaseNum === 0) return { label: "● NOT OPEN", cls: "paused" };
-    if (mintPhaseNum === 3) return { label: "● ENDED", cls: "ended" };
+    if (mintPhaseNum === 4) return { label: "● ENDED", cls: "ended" };
     if (!mintIsActive) return { label: "● PAUSED", cls: "paused" };
-    if (mintPhaseNum === 1) return { label: "● WL LIVE", cls: "live" };
-    if (mintPhaseNum === 2) return { label: "● PUBLIC LIVE", cls: "live" };
+    if (mintPhaseNum === 1) return { label: "● GTD LIVE", cls: "live" };
+    if (mintPhaseNum === 2) return { label: "● FCFS LIVE", cls: "live" };
+    if (mintPhaseNum === 3) return { label: "● PUBLIC LIVE", cls: "live" };
     return { label: "● ...", cls: "paused" };
   })();
 
@@ -751,7 +784,6 @@ export default function AppPage() {
         <nav className="sidebar-nav">
           {TABS.filter(t => {
             if (t.id === "admin") return isAdmin;
-            if (!appUnlocked && (t.id === "mint" || t.id === "portfolio")) return false;
             return true;
           }).map(tab => (
             <button
@@ -1169,20 +1201,22 @@ export default function AppPage() {
                 <div className="admin-card">
                   <h3 className="admin-card-title">Phase Controls</h3>
                   <div className="admin-info">
-                    <span>Phase: <strong>{["NONE","WHITELIST","PUBLIC","ENDED"][adminPhase ?? 0]}</strong></span>
-                    {adminPhase === 1 && wlStartTime && (
-                      <span>WL ends: <strong>{new Date((wlStartTime + 7200) * 1000).toLocaleTimeString()}</strong></span>
-                    )}
-                    {adminPhase === 1 && <span>WL Minted: <strong>{wlCount} / 1500</strong></span>}
+                    <span>Phase: <strong>{["NONE","GTD","FCFS","PUBLIC","ENDED"][adminPhase ?? 0]}</strong></span>
+                    {adminPhase === 1 && <span>GTD Minted: <strong>{gtdMinted} / 1500 WL cap</strong></span>}
+                    {adminPhase === 2 && <span>FCFS Minted: <strong>{fcfsMinted} / {1500 - gtdMinted} remaining</strong></span>}
                     <span>Pool 80: <strong>{pool80Val} USDG</strong></span>
                     <span>Pool 20: <strong>{pool20Val} USDG</strong></span>
                   </div>
                   <div className="admin-actions">
                     <button className="btn-admin" disabled={!!adminBusy || adminPhase !== 0}
-                      onClick={() => doAdmin("Open Whitelist", PM_ADDR, [{type:"function",name:"openWhitelist",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openWhitelist")}>
-                      {adminBusy === "Open Whitelist" ? "..." : "Open WL"}
+                      onClick={() => doAdmin("Open GTD", PM_ADDR, [{type:"function",name:"openGTD",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openGTD")}>
+                      {adminBusy === "Open GTD" ? "..." : "Open GTD"}
                     </button>
                     <button className="btn-admin" disabled={!!adminBusy || adminPhase !== 1}
+                      onClick={() => doAdmin("Open FCFS", PM_ADDR, [{type:"function",name:"openFCFS",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openFCFS")}>
+                      {adminBusy === "Open FCFS" ? "..." : "Open FCFS"}
+                    </button>
+                    <button className="btn-admin" disabled={!!adminBusy || adminPhase !== 2}
                       onClick={() => doAdmin("Open Public", PM_ADDR, [{type:"function",name:"openPublic",inputs:[],outputs:[],stateMutability:"nonpayable"}], "openPublic")}>
                       {adminBusy === "Open Public" ? "..." : "Open Public"}
                     </button>
@@ -1193,17 +1227,33 @@ export default function AppPage() {
                   </div>
                 </div>
 
-                {/* ── Whitelist Root ── */}
+                {/* ── GTD Root ── */}
                 <div className="admin-card">
-                  <h3 className="admin-card-title">Whitelist Root</h3>
+                  <h3 className="admin-card-title">GTD Merkle Root</h3>
                   <div className="admin-info">
-                    <span style={{fontFamily:"monospace",fontSize:12,wordBreak:"break-all"}}>{wlRoot || "(not set)"}</span>
+                    <span style={{fontFamily:"monospace",fontSize:12,wordBreak:"break-all"}}>{gtdRoot || "(not set)"}</span>
                   </div>
                   <div className="admin-actions" style={{flexDirection:"row",gap:8}}>
-                    <input className="admin-input" placeholder="0x..." value={wlRootInput}
-                      onChange={e => setWlRootInput(e.target.value)} style={{flex:1}} />
-                    <button className="btn-admin" disabled={!!adminBusy || !wlRootInput}
-                      onClick={() => { doAdmin("Set WL Root", NFT_ADDR, [{type:"function",name:"setWhitelistRoot",inputs:[{type:"bytes32"}],outputs:[],stateMutability:"nonpayable"}], "setWhitelistRoot", [wlRootInput]); setWlRootInput(""); }}>
+                    <input className="admin-input" placeholder="0x..." value={gtdRootInput}
+                      onChange={e => setGtdRootInput(e.target.value)} style={{flex:1}} />
+                    <button className="btn-admin" disabled={!!adminBusy || !gtdRootInput}
+                      onClick={() => { doAdmin("Set GTD Root", NFT_ADDR, [{type:"function",name:"setGtdRoot",inputs:[{type:"bytes32"}],outputs:[],stateMutability:"nonpayable"}], "setGtdRoot", [gtdRootInput]); setGtdRootInput(""); }}>
+                      Set
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── FCFS Root ── */}
+                <div className="admin-card">
+                  <h3 className="admin-card-title">FCFS Merkle Root</h3>
+                  <div className="admin-info">
+                    <span style={{fontFamily:"monospace",fontSize:12,wordBreak:"break-all"}}>{fcfsRootVal || "(not set)"}</span>
+                  </div>
+                  <div className="admin-actions" style={{flexDirection:"row",gap:8}}>
+                    <input className="admin-input" placeholder="0x..." value={fcfsRootInput}
+                      onChange={e => setFcfsRootInput(e.target.value)} style={{flex:1}} />
+                    <button className="btn-admin" disabled={!!adminBusy || !fcfsRootInput}
+                      onClick={() => { doAdmin("Set FCFS Root", NFT_ADDR, [{type:"function",name:"setFcfsRoot",inputs:[{type:"bytes32"}],outputs:[],stateMutability:"nonpayable"}], "setFcfsRoot", [fcfsRootInput]); setFcfsRootInput(""); }}>
                       Set
                     </button>
                   </div>

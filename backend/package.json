@@ -1,17 +1,14 @@
 {
   "name": "google-stock-nft-backend",
   "version": "1.0.0",
-  "description": "Whitelist API for Google Stock NFT",
-  "engines": {
-    "node": ">=20",
-    "pnpm": ">=9"
-  },
+  "description": "Merkle tree tools for Google Stock NFT",
   "scripts": {
-    "start": "npx ts-node src/index.ts",
-    "dev": "npx ts-node src/index.ts"
+    "gen-merkle": "npx ts-node scripts/generate-merkle.ts",
+    "verify-merkle": "npx ts-node scripts/verify-merkle.ts"
   },
   "dependencies": {
-    "dotenv": "^16.3.0",
+    "keccak256": "^1.0.6",
+    "merkletreejs": "^0.6.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0"
   },

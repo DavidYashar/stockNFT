@@ -39,6 +39,11 @@ interface INonfungiblePositionManager {
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 }
 
+interface IQuoterV2 {
+    function quoteExactInput(bytes memory path, uint256 amountIn)
+        external returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint32[] memory initializedTicksCrossedList, uint256 gasEstimate);
+}
+
 /**
  * @title TreasuryVault V3
  * @notice Central hub for StockNFT V3 on Robinhood Chain.
@@ -81,6 +86,10 @@ contract TreasuryVault is Ownable, ReentrancyGuard {
     // ─── Uniswap V3 addresses ───
     address public immutable swapRouter;                // SwapRouter02
     address public immutable positionManager;           // NonfungiblePositionManager
+    address public immutable quoterV2;                  // QuoterV2 for pre-purchase quotes
+
+    // ─── GOOGL purchase config ───
+    uint24 public usdgGooglPoolFee = 3000;              // fee tier for USDG→GOOGL pool (settable)
 
     // ─── ERC-6551 ───
     address public erc6551Registry;
@@ -141,16 +150,19 @@ contract TreasuryVault is Ownable, ReentrancyGuard {
         address _googlToken,
         address _swapRouter,
         address _positionManager,
+        address _quoterV2,
         address _owner,
         address _treasury
     ) Ownable(_owner) {
         require(_usdgToken != address(0) && _googlToken != address(0), "Zero token");
         require(_swapRouter != address(0) && _positionManager != address(0), "Zero router");
+        require(_quoterV2 != address(0), "Zero quoter");
         require(_treasury != address(0), "Zero treasury");
         usdgToken = IERC20(_usdgToken);
         googlToken = IERC20(_googlToken);
         swapRouter = _swapRouter;
         positionManager = _positionManager;
+        quoterV2 = _quoterV2;
         treasuryEOA = _treasury;
         feeRecipient = _treasury;
     }
@@ -179,6 +191,7 @@ contract TreasuryVault is Ownable, ReentrancyGuard {
     }
     function setPileToken(address _a) external onlyOwner {
         require(address(pileToken) == address(0), "Already set");
+        require(_a != address(0), "Zero");
         pileToken = IERC20(_a);
     }
     function updatePileToken(address _a) external onlyOwner {
@@ -223,7 +236,7 @@ contract TreasuryVault is Ownable, ReentrancyGuard {
     /// @param to Recipient address
     /// @param amount Amount of PILE (6 decimals)
     /// @param label Human-readable label for the transfer (e.g. "Diamond Hands", "Team", "Ecosystem")
-    function sendPILE(address to, uint256 amount, string calldata label) external {
+    function sendPILE(address to, uint256 amount, string calldata label) external nonReentrant {
         require(msg.sender == owner() || msg.sender == treasuryEOA, "Auth");
         require(to != address(0), "Zero address");
         require(amount > 0, "Zero amount");
@@ -445,12 +458,28 @@ contract TreasuryVault is Ownable, ReentrancyGuard {
         emit PurchaseExecuted(usdgAmount, googlReceived);
     }
 
+    /// @notice Set the fee tier for the USDG→GOOGL Uniswap pool.
+    function setUsdgGooglPoolFee(uint24 _fee) external onlyOwner {
+        require(!purchaseComplete, "Purchase already done");
+        require(_fee == 100 || _fee == 500 || _fee == 3000 || _fee == 10000, "Invalid fee");
+        usdgGooglPoolFee = _fee;
+    }
+
+    /// @notice Quote expected GOOGL output for a given USDG input amount (read-only preview).
+    function quotePurchase(uint256 usdgAmount) public view returns (uint256 googlOut) {
+        bytes memory path = abi.encodePacked(
+            address(usdgToken), usdgGooglPoolFee, address(googlToken)
+        );
+        (bool ok, bytes memory data) = quoterV2.staticcall(
+            abi.encodeWithSignature("quoteExactInput(bytes,uint256)", path, usdgAmount)
+        );
+        require(ok, "Quote failed");
+        (googlOut) = abi.decode(data, (uint256));
+    }
+
     /// @notice Returns the swap path for USDG → GOOGL.
-    ///         Encoded as: [tokenIn, fee, tokenOut] — 43 bytes if direct pool exists.
-    ///         Override with setSwapPath if routing through WETH.
     function _getUsdgToGooglPath() internal view returns (bytes memory) {
-        // Direct path: USDG → GOOGL (0.3% pool assumed)
-        return abi.encodePacked(address(usdgToken), uint24(3000), address(googlToken));
+        return abi.encodePacked(address(usdgToken), usdgGooglPoolFee, address(googlToken));
     }
 
     /// @notice Open GOOGL claims for NFT holders.

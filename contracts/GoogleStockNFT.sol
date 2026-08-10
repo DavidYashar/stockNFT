@@ -10,19 +10,24 @@ import "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./interfaces/IERC6551Registry.sol";
 
+interface AggregatorV3Interface {
+    function latestRoundData() external view returns (
+        uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound
+    );
+    function decimals() external view returns (uint8);
+}
+
 /**
- * @title GoogleStockNFT V2
- * @notice ERC-721 NFT — USDG payments, two-phase mint (WL / Public).
+ * @title GoogleStockNFT V3
+ * @notice ERC-721 NFT — USDG payments, three-phase mint (GTD / FCFS / Public).
  *
- *         Phase 1 (Whitelist): 1,500 NFTs at 4 USDG — Merkle proof required.
- *         Phase 2 (Public):    2,583 NFTs at 6 USDG — open to all.
+ *         GTD (Phase 1):  Merkle proof required, 4 USDG, 2h window
+ *         FCFS (Phase 2): Merkle proof required, 4 USDG, 2h window, 1500 WL cap shared
+ *         Public (Phase 3): Open to all, 6 USDG
  *         Total: 4,083 NFTs.
  *
- *         Fee routing per mint:
- *           100% USDG sent to TreasuryVault (auto-splits 80/20 internally).
- *           TBA deployed at mint time (ERC-6551).
- *
- *         PlatformManager tracks phase. TreasuryVault handles everything else.
+ *         GOOGL price at mint is read from the Chainlink oracle on-chain.
+ *         100% USDG → TreasuryVault. TBA deployed at mint (ERC-6551).
  */
 contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
     using SafeERC20 for IERC20;
@@ -30,42 +35,41 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
     error MintNotActive();
     error MaxSupplyReached();
     error WrongPayment();
-    error NotWhitelisted();
     error WrongPhase();
 
     uint256 public constant MAX_SUPPLY = 4_083;
     uint256 public constant WL_PRICE = 4_000_000;    // 4 USDG (6 decimals)
     uint256 public constant PUBLIC_PRICE = 6_000_000; // 6 USDG (6 decimals)
-    uint256 public constant WL_CAP = 1_500;           // Max 1,500 NFTs during WL
-    uint256 public constant WHITELIST_DURATION = 7200; // 2 hours
+    uint256 public constant WL_CAP = 1_500;           // Max 1,500 NFTs across GTD + FCFS
     uint256 public constant STOCK_BPS = 8_000;
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint96 public royaltyBps = 1_000;
 
     // ─── Immutable ───
     IERC20 public immutable usdgToken;
+    AggregatorV3Interface public immutable googlPriceFeed;  // Chainlink oracle for GOOGL price at mint
 
     // ─── Admin addresses ───
     address public treasuryEOA;
     address public treasuryVault;     // V3: receives 100% of mint USDG
     address public platformManager;
-    address public whitelist;         // Whitelist contract (Merkle verifier)
 
     // ─── ERC-6551 ───
     address public erc6551Registry;
     address public erc6551Implementation;
 
-    // ─── Fallback Merkle root (if no Whitelist contract set) ───
-    bytes32 public whitelistRoot;
+    // ─── V3 Merkle roots (GTD + FCFS) ───
+    bytes32 public gtdRoot;
+    bytes32 public fcfsRoot;
 
     // ─── Mint state ───
-    bool public mintActive = true;
+    bool public mintActive = false; // starts paused — PlatformManager enables via notifyPhaseStart()
     uint256 private _nextMintId = 1;
 
-    // ─── Whitelist tracking ───
-    uint256 public whitelistStartTime;
-    uint256 public wlMintCount;
-    mapping(address => bool) public wlMinted;
+    // ─── WL tracking ──
+    uint256 public gtdMintCount;
+    uint256 public fcfsMintCount;
+    mapping(address => bool) public wlMinted;  // any WL address that minted (GTD or FCFS)
 
     // ─── Per-token metadata ───
     mapping(uint256 => uint256) public mintPrincipal;   // USDG paid
@@ -83,13 +87,15 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
     event MintStopped();
     event UnmintedBurned(uint256 amount);
 
-    constructor(address _owner, address _usdgToken, address _treasury, address _treasuryVault)
+    constructor(address _owner, address _usdgToken, address _googlPriceFeed, address _treasury, address _treasuryVault)
         ERC721("Google Stock NFT", "GSNFT")
         Ownable(_owner)
     {
         require(_usdgToken != address(0) && _treasury != address(0), "Zero addr");
+        require(_googlPriceFeed != address(0), "Zero oracle");
         require(_treasuryVault != address(0), "Zero TV");
         usdgToken = IERC20(_usdgToken);
+        googlPriceFeed = AggregatorV3Interface(_googlPriceFeed);
         treasuryEOA = _treasury;
         treasuryVault = _treasuryVault;
     }
@@ -99,9 +105,8 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
     function updatePlatformManager(address _a) external onlyOwner { require(_a != address(0)); platformManager = _a; }
     function setTreasuryVault(address _a) external onlyOwner { require(treasuryVault == address(0)); treasuryVault = _a; }
     function updateTreasuryVault(address _a) external onlyOwner { require(_a != address(0)); treasuryVault = _a; }
-    function setWhitelist(address _a) external onlyOwner { require(whitelist == address(0)); whitelist = _a; }
-    function updateWhitelist(address _a) external onlyOwner { require(_a != address(0)); whitelist = _a; }
-    function setWhitelistRoot(bytes32 _r) external onlyOwner { whitelistRoot = _r; }
+    function setGtdRoot(bytes32 _r) external onlyOwner { gtdRoot = _r; }
+    function setFcfsRoot(bytes32 _r) external onlyOwner { fcfsRoot = _r; }
     function updateTreasury(address _a) external onlyOwner { require(_a != address(0)); treasuryEOA = _a; }
     function setContractURI(string calldata _u) external onlyOwner { contractURI = _u; }
     function setRoyaltyBps(uint96 _b) external onlyOwner { require(_b <= 5_000); royaltyBps = _b; }
@@ -122,10 +127,10 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
         erc6551Implementation = _impl;
     }
 
-    /// @notice Called by PlatformManager when WL phase opens. Sets the start time.
-    function notifyWhitelistStart() external {
+    /// @notice Called by PlatformManager when GTD phase opens. Enables minting.
+    function notifyPhaseStart() external {
         require(msg.sender == platformManager, "Not PM");
-        whitelistStartTime = block.timestamp;
+        mintActive = true;
     }
 
     // ─── Mint Lifecycle ───
@@ -159,36 +164,52 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
     }
 
     // ─── Mint ───
-    /// @notice Mint an NFT. During WL phase, a valid Merkle proof is required.
-    ///         V3: 100% USDG → TreasuryVault. TBA deployed at mint time.
-    /// @param googlPrice Current GOOGL oracle price (for certificate)
+    /// @notice Mint an NFT. Phase-aware: GTD (Merkle), FCFS (Merkle), Public (open).
+    ///         GOOGL price is read from Chainlink oracle on-chain, with user-provided fallback.
+    /// @param googlPrice User-supplied GOOGL price from frontend (used if oracle is stale)
     /// @param proof Merkle proof (empty for public phase)
     function mint(uint256 googlPrice, bytes32[] calldata proof) external returns (uint256 tokenId) {
         if (!mintActive) revert MintNotActive();
         if (_nextMintId > MAX_SUPPLY) revert MaxSupplyReached();
         require(platformManager != address(0) && treasuryVault != address(0), "Not set up");
 
-        // Read phase from PlatformManager
+        // Read phase + deadline from PlatformManager
         (bool phaseOk, bytes memory phaseData) = platformManager.staticcall(
             abi.encodeWithSignature("mintPhase()")
         );
         require(phaseOk, "PM read failed");
         uint8 phase = abi.decode(phaseData, (uint8));
 
+        // Enforce phase deadline for GTD + FCFS (2h window)
+        if (phase == 1 || phase == 2) {
+            (bool dlOk, bytes memory dlData) = platformManager.staticcall(
+                abi.encodeWithSignature("phaseDeadline()")
+            );
+            require(dlOk && abi.decode(dlData, (uint256)) > block.timestamp, "Phase deadline passed");
+        }
+
         uint256 price;
         if (phase == 1) {
-            // ── WL phase ──
-            require(whitelistStartTime > 0, "WL not initialized");
-            require(block.timestamp < whitelistStartTime + WHITELIST_DURATION, "WL ended");
-            require(wlMintCount < WL_CAP, "WL cap reached");
+            // ── GTD phase ──
+            require(gtdRoot != bytes32(0), "GTD root not set");
             require(!wlMinted[msg.sender], "Already minted WL");
-            if (!_verifyWhitelist(msg.sender, proof)) revert NotWhitelisted();
+            _verifyMerkle(gtdRoot, proof);
 
             price = WL_PRICE;
             wlMinted[msg.sender] = true;
-            wlMintCount++;
+            gtdMintCount++;
         } else if (phase == 2) {
-            // Public phase
+            // ── FCFS phase ──
+            require(fcfsRoot != bytes32(0), "FCFS root not set");
+            require(gtdMintCount + fcfsMintCount < WL_CAP, "WL cap reached");
+            require(!wlMinted[msg.sender], "Already minted WL");
+            _verifyMerkle(fcfsRoot, proof);
+
+            price = WL_PRICE;
+            wlMinted[msg.sender] = true;
+            fcfsMintCount++;
+        } else if (phase == 3) {
+            // ── Public phase ──
             price = PUBLIC_PRICE;
         } else {
             revert WrongPhase();
@@ -213,7 +234,13 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
         // Assign & mint
         tokenId = _nextMintId;
         mintPrincipal[tokenId] = price;
-        googlPriceAtMint[tokenId] = googlPrice;
+        // Read GOOGL price from Chainlink oracle; fallback to frontend-supplied price if stale
+        (, int256 oraclePrice,, uint256 updatedAt,) = googlPriceFeed.latestRoundData();
+        if (updatedAt > 0 && block.timestamp - updatedAt < 12 hours && oraclePrice > 0) {
+            googlPriceAtMint[tokenId] = uint256(oraclePrice);
+        } else {
+            googlPriceAtMint[tokenId] = googlPrice; // fallback: frontend price from Robinhood API
+        }
         mintTimestamp[tokenId] = uint48(block.timestamp);
         minterOf[tokenId] = msg.sender;
 
@@ -233,21 +260,14 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
         }
 
         if (_nextMintId > MAX_SUPPLY) mintActive = false;
-        emit NFTMinted(tokenId, msg.sender, price, googlPrice);
+        emit NFTMinted(tokenId, msg.sender, price, googlPriceAtMint[tokenId]);
     }
 
-    // ─── Whitelist verification ───
-    function _verifyWhitelist(address user, bytes32[] calldata proof) internal view returns (bool) {
-        if (whitelist != address(0)) {
-            (bool ok, bytes memory data) = whitelist.staticcall(
-                abi.encodeWithSignature("verify(address,bytes32[])", user, proof)
-            );
-            return ok && abi.decode(data, (bool));
-        }
-        // Fallback: use local Merkle root
-        if (whitelistRoot == bytes32(0)) return false;
-        bytes32 leaf = keccak256(abi.encodePacked(user));
-        return MerkleProof.verify(proof, whitelistRoot, leaf);
+    // ─── Merkle verification ───
+    function _verifyMerkle(bytes32 root, bytes32[] calldata proof) internal view {
+        require(root != bytes32(0), "Root not set");
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
+        require(MerkleProof.verify(proof, root, leaf), "Not whitelisted");
     }
 
     // ─── Transfer hook (blocks soulbound NFTs) ───
@@ -269,7 +289,7 @@ contract GoogleStockNFT is ERC721, ERC721Enumerable, Ownable, IERC2981 {
             '{"name":"Google Stock NFT #', _toString(tokenId),
             '","description":"On-chain certificate representing fractional ownership of Alphabet Class A (GOOGL) via Google Stock Passport. ERC-6551 smart account backed by Google shares and PILE tokens.",',
             '"image":"data:image/svg+xml;base64,', _svgBase64(tokenId), '",',
-            '"external_url":"https://explorer.testnet.chain.robinhood.com/address/', _toHexString(tbaForToken[tokenId]), '",',
+            '"external_url":"https://robinhoodchain.blockscout.com/address/', _toHexString(tbaForToken[tokenId]), '",',
             '"attributes":[',
             '{"trait_type":"Certificate ID","value":"#', _toString(tokenId), '"},',
             '{"trait_type":"GOOGL Share","value":', _googlShareString(tokenId), '},',

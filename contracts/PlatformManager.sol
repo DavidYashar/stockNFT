@@ -31,9 +31,10 @@ contract PlatformManager is Ownable, Pausable {
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
-    // Phase
-    enum Phase { NONE, WHITELIST, PUBLIC, ENDED }
+    // Phase  (V3: GTD → FCFS → PUBLIC)
+    enum Phase { NONE, GTD, FCFS, PUBLIC, ENDED }
     Phase public mintPhase = Phase.NONE;
+    uint256 public phaseDeadline; // timestamp when current phase expires (0 = no deadline)
 
     // Mint & loyalty
     uint256 public totalMintPrincipal;
@@ -109,21 +110,29 @@ contract PlatformManager is Ownable, Pausable {
         require(ok, "NFT update failed");
     }
 
-    // ─── Phase ───
-    function openWhitelist() external onlyTreasuryOrOwner whenNotPaused {
-        require(mintPhase == Phase.NONE);
-        mintPhase = Phase.WHITELIST;
-        // Notify NFT contract to start WL timer
-        (bool ok, ) = googleStockNFT.call(
-            abi.encodeWithSignature("notifyWhitelistStart()")
-        );
+    // ─── Phase (V3: GTD → FCFS → PUBLIC → END) ───
+    /// @notice Open GTD phase (2 hours, 1500 WL cap starts here)
+    function openGTD() external onlyTreasuryOrOwner whenNotPaused {
+        require(mintPhase == Phase.NONE, "Not NONE");
+        mintPhase = Phase.GTD;
+        phaseDeadline = block.timestamp + 7200; // 2 hours
+        (bool ok, ) = googleStockNFT.call(abi.encodeWithSignature("notifyPhaseStart()"));
         require(ok, "NFT notify failed");
-        emit PhaseChanged(Phase.NONE, Phase.WHITELIST);
+        emit PhaseChanged(Phase.NONE, Phase.GTD);
     }
+    /// @notice Advance GTD → FCFS (2 hours, remaining WL cap)
+    function openFCFS() external onlyTreasuryOrOwner whenNotPaused {
+        require(mintPhase == Phase.GTD, "Not GTD");
+        mintPhase = Phase.FCFS;
+        phaseDeadline = block.timestamp + 7200; // 2 hours
+        emit PhaseChanged(Phase.GTD, Phase.FCFS);
+    }
+    /// @notice Advance FCFS → Public (open mint, 6 USDG)
     function openPublic() external onlyTreasuryOrOwner whenNotPaused {
-        require(mintPhase == Phase.WHITELIST);
+        require(mintPhase == Phase.FCFS, "Not FCFS");
         mintPhase = Phase.PUBLIC;
-        emit PhaseChanged(Phase.WHITELIST, Phase.PUBLIC);
+        phaseDeadline = 0; // no deadline for public
+        emit PhaseChanged(Phase.FCFS, Phase.PUBLIC);
     }
     function endMint() external onlyTreasuryOrOwner whenNotPaused {
         require(!mintEnded);
