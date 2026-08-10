@@ -904,7 +904,7 @@ export default function AppPage() {
               </div>
 
               <button className="btn-mint" onClick={handleMint}
-                disabled={mintLoading || !address || (mintPhaseNum === 1 && (activeTier !== "whitelist" || wlAlreadyMinted)) || (mintPhaseNum === 0 || mintPhaseNum === 3)}>
+                disabled={mintLoading || !address || (mintPhaseNum === 1 && (activeTier !== "whitelist" || wlAlreadyMinted)) || (mintPhaseNum === 0 || mintPhaseNum === 4)}>
                 <span className="material-icons-round">
                   {mintLoading ? "hourglass_top" : "add_circle"}
                 </span>
