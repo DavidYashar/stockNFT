@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { ADDRESSES } from "@/lib/contracts";
 import Link from "next/link";
 
 const TABS = [
@@ -20,7 +19,8 @@ export default function DAppSidebar() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const isAdmin = mounted && address && address.toLowerCase() === ADDRESSES.treasury.toLowerCase();
+  const treasuryAddr = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").trim().toLowerCase();
+  const isAdmin = mounted && address && address.toLowerCase() === treasuryAddr;
   const tabs = isAdmin ? [...TABS, { href: "/admin", label: "Admin", icon: "settings" }] : TABS;
 
   return (

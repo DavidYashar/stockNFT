@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { ADDRESSES } from "@/lib/contracts";
 import Link from "next/link";
 
 function WalletButton() {
@@ -43,8 +42,8 @@ export function AppHeader() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const deployerAddr = ADDRESSES.treasury?.toLowerCase();
-  const treasuryAddr = ADDRESSES.treasury?.toLowerCase();
+  const deployerAddr = (process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS || "").trim().toLowerCase();
+  const treasuryAddr = (process.env.NEXT_PUBLIC_TREASURY_EOA || "").trim().toLowerCase();
   // Only use connected address after client mount to avoid hydration mismatch
   const userAddr = mounted ? address?.toLowerCase() : undefined;
 

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useAccount, useReadContract } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { ADDRESSES } from "@/lib/contracts";
 
 const PM_ABI = ["function owner() view returns (address)"];
 
@@ -12,7 +11,7 @@ export function NavLinks() {
   const { address } = useAccount();
   const [menuOpen, setMenuOpen] = useState(false);
   const { data: pmOwner } = useReadContract({
-    address: ADDRESSES.platform as `0x${string}`,
+    address: (process.env.NEXT_PUBLIC_PLATFORM_ADDRESS || "") as `0x${string}`,
     abi: PM_ABI,
     functionName: "owner",
   });
