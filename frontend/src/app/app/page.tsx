@@ -92,6 +92,7 @@ export default function AppPage() {
   const readProvider = useRef(new ethers.JsonRpcProvider(RPC_URL));
   const NFT_ADDR = process.env.NEXT_PUBLIC_NFT_ADDRESS || "0xD50936Ac0E7f5Eb72FaEF0B88E90a99C0ade3358";
   const USDG_ADDR = process.env.NEXT_PUBLIC_USDG_ADDRESS || "0xcD3246a7E37eDFBd29113EB84c997D5859Fc2677";
+  const PILE_ADDR = process.env.NEXT_PUBLIC_PILE_ADDRESS || "0x18c52d59b90Abc15E7aB1856ab3357990603F26f";
   const TV_ADDR = process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x533aAF9AdA77423b889026250af3463C31C7076b";  // V3: TreasuryVault
   const PM_ADDR = process.env.NEXT_PUBLIC_PLATFORM_ADDRESS || "0x0301E19FBc01fB7933859866aC0155BfC604589A";
 
@@ -168,6 +169,7 @@ export default function AppPage() {
   const [lpMinUsdgInput, setLpMinUsdgInput] = useState("");
   const [lpPileOnChain, setLpPileOnChain] = useState("0");
   const [lpUsdgOnChain, setLpUsdgOnChain] = useState("0");
+  const [pileTvBalance, setPileTvBalance] = useState("0"); // PILE balance in TV
   const [lpCreated, setLpCreated] = useState(false);
   const [lpMarketCap, setLpMarketCap] = useState<{ price: string; fdv: string } | null>(null);
   // ── V3 Admin: Pools ──
@@ -248,6 +250,7 @@ export default function AppPage() {
     if (!mounted || !isAdmin || !TV_ADDR) return;
     const pm = new ethers.Contract(PM_ADDR, [
       "function mintPhase() view returns (uint8)",
+      "function mintEnded() view returns (bool)",
     ], readProvider.current);
     const nft = new ethers.Contract(NFT_ADDR, [
       "function gtdMintCount() view returns (uint256)",
@@ -301,6 +304,12 @@ export default function AppPage() {
         setPurchaseDone(pco);
         setPileClaimsOpen(pclo);
         setGooglClaimsOpenVal(gclo);
+        // PILE balance in TV (for Section D display)
+        try {
+          const pileToken = new ethers.Contract(PILE_ADDR, ["function balanceOf(address) view returns (uint256)"], readProvider.current);
+          const pileBal = await pileToken.balanceOf(TV_ADDR);
+          setPileTvBalance(ethers.formatUnits(pileBal, 6));
+        } catch {}
       } catch {}
     }
     fetch();
@@ -1395,7 +1404,7 @@ export default function AppPage() {
                     Section D: Send PILE (Diamond Hands / Team / Ecosystem)
                   </h3>
                   <div className="admin-info">
-                    <span>Remaining PILE in TV: check on explorer</span>
+                    <span>Remaining PILE in TV: <strong>{pileTvBalance} PILE</strong></span>
                   </div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
                     <input placeholder="Recipient address (0x...)" value={sendPileTo}
